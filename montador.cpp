@@ -328,22 +328,38 @@ void processar_assembly(const std::string &input_filename, const std::string &ou
 }
 
 
-int main() {
-    // Nome dos arquivos de entrada e saída
-    std::string input_filename = "_codigo.asm";  // Nome do arquivo de entrada
-    std::string output_filename = "_codigo_processado.asm";  // Nome do arquivo de saída
-
-    // Processar o código Assembly
+int main(int argc, char *argv[]) {
     try {
-        reordenar_sections(input_filename, output_filename);
-        processar_assembly(output_filename, output_filename);
+        if (argc != 2)
+            throw std::runtime_error("Uso: ./montador <nome_arquivo.asm> | <nome_arquivo.pre>");
+
+        std::string input_filename = argv[1];
+        if (!std::filesystem::exists(input_filename))
+            throw std::runtime_error("Arquivo nao encontrado: " + input_filename);
+
+        // extrair extensao do arquivo
+        std::string filename = input_filename.substr(0, input_filename.find_last_of("."));
+        std::string extension = input_filename.substr(input_filename.find_last_of(".") + 1);
+        if (extension != "asm" && extension != "pre")
+            throw std::runtime_error("Extensao de arquivo invalida: " + extension);
+        
+        // Pre-processamento
+        if (extension == "asm") {
+            std::string output_filename = filename + ".pre";  // Nome do arquivo de saída
+            reordenar_sections(input_filename, output_filename);
+            processar_assembly(output_filename, output_filename);
+            std::cout << "Pré-processamento concluído. Código processado gerado em " << output_filename << std::endl;
+        }
+        else {
+            std::string output_filename = filename + ".obj";  // Nome do arquivo de saída
+            std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
+        }
+        
     } catch (std:: exception &e) {
         std::cerr << "Error: " << e.what() << "\n";
         return EXIT_FAILURE;
     }
     
-
-    std::cout << "Pré-processamento concluído. Código processado gerado em " << output_filename << std::endl;
-
+    
     return EXIT_SUCCESS;
 }
