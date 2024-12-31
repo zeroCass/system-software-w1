@@ -30,10 +30,70 @@ const std::unordered_map<std::string, Operacao> tabela_operacoes = {
     {"STOP", {"STOP", "14", 1}}
 };
 
+// converte uma string para uppercase
+void to_uppercase(std::string &line) {
+    std::transform(line.begin(), line.end(), line.begin(), ::toupper);
+}
 
 
-// Function to remove comments and invalid words after the comment
-std::string removeComment(const std::string &line) {
+void reordenar_sections(const std::string &input_filename, const std::string &output_filename) {
+    std::ifstream input_file(input_filename);
+    if (!input_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
+    
+    
+    std::vector<std::string> section_text;
+    std::vector<std::string> section_data;
+
+    std::string line;
+    bool in_section_text = false;
+    bool in_section_data = false;
+    bool has_section_text = false;
+    bool has_section_data = false;
+
+    while (std::getline(input_file, line)) {
+        // converte para uppercase sempre
+        to_uppercase(line);
+        if (line == "SECTION TEXT") {
+            in_section_text = true;
+            has_section_text = true;
+            in_section_data = false;
+        } else if (line == "SECTION DATA") {
+            in_section_data = true;
+            has_section_data = true;
+            in_section_text = false;
+        } else {
+            if (in_section_text)
+                section_text.push_back(line);
+            if (in_section_data)
+                section_data.push_back(line); 
+        }
+    }
+    input_file.close();
+    if (!has_section_text) throw std::runtime_error("Não foi possivel localizar SECTION TEXT no arquivo: " + input_filename);
+    if (!has_section_data) throw std::runtime_error("Não foi possivel localizar SECTION DATA no arquivo: " + input_filename);
+    
+    std::ofstream output_file(output_filename);
+    if (!output_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + output_filename);
+
+
+    output_file << "SECTION TEXT\n";
+    for (int i = 0; i < section_text.size(); i++) {
+        output_file << section_text[i] << "\n";
+    }
+    output_file << "SECTION DATA\n";
+    for (int j = 0; j < section_data.size(); j++) {
+        output_file << section_data[j] << "\n";
+    }
+    output_file.close();
+
+}
+
+
+// Função que remove comentários em qualquer lugar do código, incluindo no meio da linha (entre operações)
+// e no começo da linha. Porem, não permite o uso de palavras reservados dentro do comentario
+std::string remover_comentarios(const std::string &line) {
     size_t pos_comentario = line.find(';');
     if (pos_comentario == std::string::npos)
         return line;
@@ -78,14 +138,32 @@ std::string removeComment(const std::string &line) {
 }
 
 
+// Funcao simplificada que remove comentarios do codigo
+// comentarios no começo da linha anulam a ela 
+// comentarios no fim da linha são removidos
+std::string remover_comentarios_simples(std::string &line) {
+    size_t pos_comentario = line.find(';');
+    if (pos_comentario == std::string::npos)
+        return line;
+    
+    // se o comentario esta no começo, anula linha e retorna vazio
+    if (pos_comentario == 0)
+        return std::string();
+
+    std::string new_line = line.substr(0, pos_comentario);;
+    return new_line;
+
+}
+
+
 // Função que remove espaços desnecessários em uma linha
-std::string remover_espacos(const std::string &linha) {
+std::string remover_espacos(const std::string &line) {
     std::string resultado;
     bool espaco_anterior = false;
     bool ant_is_virgula = true;
 
-    for (size_t i = 0; i < linha.size(); ++i) {
-        char c = linha[i];
+    for (size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
 
         if (i == 0 && isspace(c)) continue;
         
@@ -117,10 +195,17 @@ std::string remover_espacos(const std::string &linha) {
     return resultado;
 }
 
+
+
 // Função que remove comentários e espaços desnecessários
-std::string preprocessar_linha(const std::string &linha) {
-    std::string new_line = linha;
-    new_line = removeComment(new_line);
+std::string preprocessar_linha(const std::string &line) {
+    if (line.empty()) return std::string();
+
+    std::string new_line = line;
+    // converte para uppercase sempre
+    // std::transform(new_line.begin(), new_line.end(), new_line.begin(), ::toupper);
+
+    new_line = remover_comentarios_simples(new_line);
     new_line = remover_espacos(new_line);
     
     
@@ -128,8 +213,38 @@ std::string preprocessar_linha(const std::string &linha) {
     return new_line;
 }
 
+// Funcção que verifica se uma label está sozinha na linha
+bool is_single_label(const std::string &line) {
+    if (line.empty()) return false;
+    
+    std::istringstream stream(line);
+    std::string word;
+    std::vector<std::string> words;
+        // Split the line into words
+    while (stream >> word) {
+        words.push_back(word);
+    }
 
-// std::string analisar_linha(const std::string &linha) {
+    if (words[0].back() == ':' && words.size() == 1)
+        return true;
+    return false;
+}
+
+
+// REmove a quebra de linha (permitida) entre labels e instruções
+std::string correct_single_labels(std::ifstream &input_file, const std::string &current_line) {
+    std::string next_line;
+    while (std::getline(input_file, next_line)) {
+        if (!next_line.empty()) {
+            next_line = preprocessar_linha(next_line);
+            return current_line + " " + next_line; // Combine label with the instruction
+        }
+    }
+    return current_line; 
+}
+
+
+// std::string analisar_linha(const std::string &line) {
 //     std::string linha_completa;
 //     bool primeira_instrucao = true;
 //     std::istringstream iss(linha);
@@ -137,9 +252,9 @@ std::string preprocessar_linha(const std::string &linha) {
 //     bool linha_valida = false;
     
 //     // Verificar se a linha começa com uma label
-//     if (linha.find(':') != std::string::npos) {
+//     if (line.find(':') != std::string::npos) {
 //         // Se for label, deve ser associada à próxima instrução
-//         linha_completa += linha + " ";  // Mantém a label na mesma linha
+//         line_completa += line + " ";  // Mantém a label na mesma linha
 //         continue;
 //     }
 
@@ -186,40 +301,49 @@ std::string preprocessar_linha(const std::string &linha) {
 // Função que processa o código de Assembly
 void processar_assembly(const std::string &input_filename, const std::string &output_filename) {
     std::ifstream input_file(input_filename);
-    std::ofstream output_file(output_filename);
+    if (!input_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
+    
+    std::string line;
+    std::vector<std::string> output_lines;
 
-    if (!input_file.is_open()) {
-        std::cerr << "Erro ao abrir o arquivo de entrada!" << std::endl;
-        return;
-    }
+    while (std::getline(input_file, line)) {
+        
+        line = preprocessar_linha(line);
+        if (is_single_label(line)) line = correct_single_labels(input_file, line);
+        if (line.empty()) continue; // Ignorar linhas vazias
 
-    if (!output_file.is_open()) {
-        std::cerr << "Erro ao abrir o arquivo de saída!" << std::endl;
-        return;
-    }
-
-    std::string linha;
-
-    while (std::getline(input_file, linha)) {
-        linha = preprocessar_linha(linha);
-        if (linha.empty()) continue; // Ignorar linhas vazias
-        output_file << linha << std::endl;
-
+        output_lines.push_back(line);
     }
     input_file.close();
+
+    std::ofstream output_file(output_filename);
+    if (!output_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + output_filename);
+    
+    for (int i = 0; i < output_lines.size(); i++) {
+        output_file << output_lines[i] << std::endl;
+    }
     output_file.close();
 }
 
 
 int main() {
     // Nome dos arquivos de entrada e saída
-    std::string input_filename = "codigo.asm";  // Nome do arquivo de entrada
-    std::string output_filename = "codigo_processado.asm";  // Nome do arquivo de saída
+    std::string input_filename = "_codigo.asm";  // Nome do arquivo de entrada
+    std::string output_filename = "_codigo_processado.asm";  // Nome do arquivo de saída
 
     // Processar o código Assembly
-    processar_assembly(input_filename, output_filename);
+    try {
+        reordenar_sections(input_filename, output_filename);
+        processar_assembly(output_filename, output_filename);
+    } catch (std:: exception &e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return EXIT_FAILURE;
+    }
+    
 
     std::cout << "Pré-processamento concluído. Código processado gerado em " << output_filename << std::endl;
 
-    return 0;
+    return EXIT_SUCCESS;
 }
