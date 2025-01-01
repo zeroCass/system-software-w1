@@ -8,34 +8,48 @@
 #include <filesystem>
 #include <algorithm>
 
-// Definir a tabela de operações (simbolo, opcode, tam_operacao)
-struct Operacao {
-    std::string simbolo;
-    std::string opcode;
-    int tam_operacao;
+
+
+struct Instrucao_Info {
+    int opcode_num;
+    int tam_instrucao;
 };
 
-// Tabela de operações em formato CSV
-const std::unordered_map<std::string, Operacao> tabela_operacoes = {
-    {"ADD", {"ADD", "01", 2}},
-    {"DIV", {"DIV", "04", 2}},
-    {"JMP", {"JMP", "05", 2}},
-    {"JMPP", {"JMPP", "07", 2}},
-    {"JMPZ", {"JMPZ", "08", 2}},
-    {"COPY", {"COPY", "09", 3}},
-    {"LOAD", {"LOAD", "10", 2}},
-    {"STORE", {"STORE", "11", 2}},
-    {"INPUT", {"INPUT", "12", 2}},
-    {"OUTPUT", {"OUTPUT", "13", 2}},
-    {"STOP", {"STOP", "14", 1}}
+// Definir a tabela de operações (opcode_simbolo, opcode_num, tam_instrucao)
+const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
+    {"ADD", {1, 2}},
+    {"SUB", {2, 2}},
+    {"MUL", {3, 2}},
+    {"DIV", {4, 2}},
+    {"JMP", {5, 2}},
+    {"JMPN", {6, 2}},
+    {"JMPP", {7, 2}},
+    {"JMPZ", {8, 2}},
+    {"COPY", {9, 3}},
+    {"LOAD", {10, 2}},
+    {"STORE", {11, 2}},
+    {"INPUT", {12, 2}},
+    {"OUTPUT", {13, 2}},
+    {"STOP", {14, 1}}
 };
 
-// converte uma string para uppercase
+// definir a tabela de diretivas (opcode_diretiva, tam_diretiva)
+const std::unordered_map<std::string, int> tabela_diretivas = {
+    {"CONST", 1},
+    {"SPACE", 1}
+};
+
+std::unordered_map<std::string, int> tabela_simbolos;
+
+
+
+// Converte uma string para uppercase
 void to_uppercase(std::string &line) {
     std::transform(line.begin(), line.end(), line.begin(), ::toupper);
 }
 
 
+// Ordena as sessoes do codigo de tal forma que a SECTION TEXT seja sempre a primeira e SECTION DATA a ultima
 void reordenar_sections(const std::string &input_filename, const std::string &output_filename) {
     std::ifstream input_file(input_filename);
     if (!input_file.is_open()) 
@@ -196,7 +210,6 @@ std::string remover_espacos(const std::string &line) {
 }
 
 
-
 // Função que remove comentários e espaços desnecessários
 std::string preprocessar_linha(const std::string &line) {
     if (line.empty()) return std::string();
@@ -213,7 +226,7 @@ std::string preprocessar_linha(const std::string &line) {
     return new_line;
 }
 
-// Funcção que verifica se uma label está sozinha na linha
+// Funcção que verifica se uma label está sozinha dada uma linha
 bool is_single_label(const std::string &line) {
     if (line.empty()) return false;
     
@@ -226,6 +239,44 @@ bool is_single_label(const std::string &line) {
     }
 
     if (words[0].back() == ':' && words.size() == 1)
+        return true;
+    return false;
+}
+
+// Função que verifica se um palavra é uma label
+bool word_is_label(const std::string &word) {
+    if (!word.empty() && word.back() == ':')
+        return true;
+    return false;
+}
+
+// Verifica se uma palavra eh uma instrução
+bool word_is_instruction(const std::string &word) {
+    if (tabela_operacoes.find(word) != tabela_operacoes.end())
+        return true;
+    return false;
+}
+
+
+bool word_is_diretiva(const std::string &word) {
+    if (tabela_diretivas.find(word) != tabela_diretivas.end())
+        return true;
+    return false;
+}
+
+
+
+int get_instruction_size(const std::string &word) {
+    auto instrucao = tabela_operacoes.find(word);
+    if (instrucao != tabela_operacoes.end()) {
+        return instrucao->second.tam_instrucao; // retorna o tamanho operacao
+    }
+    return -1;
+}
+
+
+bool is_simbolo_exists(const std::string &word) {
+    if (tabela_simbolos.find(word) != tabela_simbolos.end())
         return true;
     return false;
 }
@@ -243,6 +294,50 @@ std::string correct_single_labels(std::ifstream &input_file, const std::string &
     return current_line; 
 }
 
+
+void primeira_passagem(const std::string &input_filename) {
+    std::ifstream input_file(input_filename);
+    if (!input_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
+    std::string line;
+    int contador_posicao = 0;
+    int contador_linha = 1;
+    std::string word;
+
+    while (std::getline(input_file, line)) {
+        if (line == "SECTION TEXT" || line == "SECTION DATA") {
+            contador_linha++;
+            continue;
+        }
+
+        std::istringstream stream(line);
+        bool operacao_found = false;
+
+        while (stream >> word && !operacao_found) {
+            if (word_is_label(word)) {
+                if (is_simbolo_exists(word)) 
+                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + word + " ja foi definido.");
+                tabela_simbolos[word] = contador_posicao;
+            }
+            else if (word_is_instruction(word)) {
+                int tam_instrucao = get_instruction_size(word);
+                contador_posicao += tam_instrucao;
+                operacao_found = true;
+            }
+            else if (word_is_diretiva(word)) {
+                std::cout << "Eh uma diretiva (contador_posicao + 1) - working in progress" << std::endl;
+                contador_posicao++;
+                operacao_found = true;
+            }
+            else {
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + word + " nao identificada.");
+            }
+        }
+        contador_linha++;
+        
+    }
+    input_file.close();
+}
 
 // std::string analisar_linha(const std::string &line) {
 //     std::string linha_completa;
@@ -263,16 +358,16 @@ std::string correct_single_labels(std::ifstream &input_file, const std::string &
 //         if (tabela_operacoes.find(palavra) != tabela_operacoes.end()) {
 //             // Encontramos uma operação válida
 //             const Operacao &op = tabela_operacoes.at(palavra);
-//             int tam_operacao = op.tam_operacao;
-//             linha_completa += palavra + " "; // Adiciona o simbolo da operação
+//             int tam_instrucao = op.tam_instrucao;
+//             linha_completa += palavra + " "; // Adiciona o opcode_simbolo da operação
             
 //             // Ler os operandos até completar o tamanho da operação
-//             while (--tam_operacao > 0 && iss >> palavra) {
+//             while (--tam_instrucao > 0 && iss >> palavra) {
 //                 linha_completa += palavra + " ";
 //             }
 
 //             // Verificar se a linha foi completada corretamente
-//             if (tam_operacao == 0) {
+//             if (tam_instrucao == 0) {
 //                 linha_valida = true;
 //                 break;
 //             }
@@ -352,7 +447,8 @@ int main(int argc, char *argv[]) {
         }
         else {
             std::string output_filename = filename + ".obj";  // Nome do arquivo de saída
-            std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
+            primeira_passagem(input_filename);
+            // std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
         }
         
     } catch (std:: exception &e) {
