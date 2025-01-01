@@ -7,6 +7,7 @@
 #include <cctype>
 #include <filesystem>
 #include <algorithm>
+#include <regex>
 
 
 
@@ -19,7 +20,7 @@ struct Instrucao_Info {
 const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
     {"ADD", {1, 2}},
     {"SUB", {2, 2}},
-    {"MUL", {3, 2}},
+    {"MULT", {3, 2}},
     {"DIV", {4, 2}},
     {"JMP", {5, 2}},
     {"JMPN", {6, 2}},
@@ -274,11 +275,27 @@ int get_instruction_size(const std::string &word) {
     return -1;
 }
 
+int get_instruction_opcode(const std::string &word) {
+    auto instrucao = tabela_operacoes.find(word);
+    if (instrucao != tabela_operacoes.end()) {
+        return instrucao->second.opcode_num; // retorna o opcode
+    }
+    return -1;
+}
+
 
 bool is_simbolo_exists(const std::string &word) {
     if (tabela_simbolos.find(word) != tabela_simbolos.end())
         return true;
     return false;
+}
+
+int get_simbol_mem_posicao(const std::string &word) {
+    auto simbolo = tabela_simbolos.find(word);
+    if (simbolo != tabela_simbolos.end()) {
+        return simbolo->second; // retorna posicao de memoria
+    }
+    return -1;
 }
 
 
@@ -315,9 +332,11 @@ void primeira_passagem(const std::string &input_filename) {
 
         while (stream >> word && !operacao_found) {
             if (word_is_label(word)) {
-                if (is_simbolo_exists(word)) 
+                std::string formatted_label = word;
+                formatted_label.pop_back(); // remove ':'
+                if (is_simbolo_exists(formatted_label)) 
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + word + " ja foi definido.");
-                tabela_simbolos[word] = contador_posicao;
+                tabela_simbolos[formatted_label] = contador_posicao;
             }
             else if (word_is_instruction(word)) {
                 int tam_instrucao = get_instruction_size(word);
@@ -339,58 +358,87 @@ void primeira_passagem(const std::string &input_filename) {
     input_file.close();
 }
 
-// std::string analisar_linha(const std::string &line) {
-//     std::string linha_completa;
-//     bool primeira_instrucao = true;
-//     std::istringstream iss(linha);
-//     std::string palavra;
-//     bool linha_valida = false;
+// Funcao que verifica se a label não possui erros lexicos
+bool is_lexical_valid(const std::string &word) {
+    std::regex pattern(R"(^[a-zA-Z_][a-zA-Z0-9_]*:$)");
+    return std::regex_match(word, pattern);
+}
+
+void segunda_passagem(const std::string &input_filename, const std::string &output_filename) {
+    std::ifstream input_file(input_filename);
+    if (!input_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
     
-//     // Verificar se a linha começa com uma label
-//     if (line.find(':') != std::string::npos) {
-//         // Se for label, deve ser associada à próxima instrução
-//         line_completa += line + " ";  // Mantém a label na mesma linha
-//         continue;
-//     }
+    std::ofstream output_file(output_filename);
+    if (!output_file.is_open()) 
+        throw std::runtime_error("Não foi possivel abrir o arquivo: " + output_filename);
+    
 
-//     // Caso contrário, verificar as instruções
-//     while (iss >> palavra) {
-//         if (tabela_operacoes.find(palavra) != tabela_operacoes.end()) {
-//             // Encontramos uma operação válida
-//             const Operacao &op = tabela_operacoes.at(palavra);
-//             int tam_instrucao = op.tam_instrucao;
-//             linha_completa += palavra + " "; // Adiciona o opcode_simbolo da operação
-            
-//             // Ler os operandos até completar o tamanho da operação
-//             while (--tam_instrucao > 0 && iss >> palavra) {
-//                 linha_completa += palavra + " ";
-//             }
+    std::string line;
+    int contador_posicao = 0;
+    int contador_linha = 1;
+    std::string word;
+    
 
-//             // Verificar se a linha foi completada corretamente
-//             if (tam_instrucao == 0) {
-//                 linha_valida = true;
-//                 break;
-//             }
-//         }
-//     }
+    while (std::getline(input_file, line)) {
+        if (line == "SECTION TEXT" || line == "SECTION DATA") {
+            contador_linha++;
+            continue;
+        }
+        // replace virgula por espaços para lidar com o COPY
+        std::replace(line.begin(), line.end(), ',', ' ');
 
-//     // Se a linha for válida (tem operação e operandos suficientes), adicione a linha completa
-//     if (linha_valida) {
-//         // Escrever a linha no arquivo de saída
-//         if (primeira_instrucao) {
-//             output_file << linha_completa;
-//             primeira_instrucao = false;
-//         } else {
-//             output_file << "\n" << linha_completa;
-//         }
-//         linha_completa.clear();  // Limpa a linha para a próxima instrução
-//     } else {
-//         // Se não for válida, ignorar a linha
-//         linha_completa.clear();
-//     }
-// }
+        std::istringstream stream(line);
+        std::vector<std::string> words;
+        int opcode = -1;
+        int operando_posicao = -1;
+        bool has_label = false;
+        // Extrai todas as palvras da linha
+        while (stream >> word)
+            words.push_back(word);
 
-// }
+        for (size_t i = 0; i < words.size(); i++) {
+            if (word_is_label(words[i])) {
+                if (!is_lexical_valid(words[i]))
+                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Erro lexico " + word);
+                has_label = true;
+                continue;
+            }
+
+
+
+            else if (word_is_instruction(words[i])) {
+                // verifica a quantidade de operandos de acordo com tam_instrucao
+                int tam_instrucao = get_instruction_size(words[i]);
+                if (has_label) tam_instrucao++;
+
+                opcode = get_instruction_opcode(words[i]);
+                output_file << opcode << " ";
+                
+
+                int t = words.size();
+
+                if (tam_instrucao != t)
+                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+
+                int j = i+1; // proxima instrucao
+                for (j; j < tam_instrucao; j++) {
+                    if (!is_simbolo_exists(words[j])) 
+                       throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + words[j] + " indefinido.");
+                    
+                    operando_posicao = get_simbol_mem_posicao(words[j]);
+                    output_file << operando_posicao  << " "; 
+                }
+                i = j;
+            }
+
+
+
+        }
+    }
+    input_file.close();
+    output_file.close();
+}
 
 
 // Função que processa o código de Assembly
@@ -448,6 +496,7 @@ int main(int argc, char *argv[]) {
         else {
             std::string output_filename = filename + ".obj";  // Nome do arquivo de saída
             primeira_passagem(input_filename);
+            segunda_passagem(input_filename, output_filename);
             // std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
         }
         
