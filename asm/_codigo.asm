@@ -12,7 +12,7 @@ L1:
 INPUT   OLD_DATA ;
 
 
-LOAD   OLD_ DATA    ;comentário L1: DIV
+LOAD   OLD_DATA    ;comentário L1: DIV
 ;comentario qualquer
 DIV DOIS ;ACC = OLD_DATA / 2
 L2:
