@@ -309,26 +309,25 @@ void processa_space(const std::string &s_number, std::ofstream &output_file) {
             output_file << "0" << " ";
 }
 
-bool diretiva_space_has_args(std::vector<std::string> &words, const int idx, std::ifstream &input_file) {
-    bool boolean = false;
+// Funcao que retorna { has_arg: boolean, in_next_line: boolean }
+std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx, std::ifstream &input_file) {
     int j = idx + 1;
-    if (j < words.size() && string_is_number(words[j])) boolean = true;
-    else if (j < words.size() && !string_is_number(words[j])) boolean = false;
-    else {
-        std::string line;
-        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-        
-        if (!std::getline(input_file, line)) {
-
-            if(string_is_number(&line[0])) boolean = true;
-            else boolean = false;
-        }
-        
-        input_file.clear(); // Clear the EOF flag if needed
-        input_file.seekg(posicao_linha_atual);
-        
+    if (j < words.size()) {
+        return {string_is_number(words[j]), false};
     }
-    return boolean;
+
+
+    std::streampos current_position = input_file.tellg();
+    std::string line;
+    if (std::getline(input_file, line)) {
+        input_file.clear();
+        input_file.seekg(current_position); // reseta pointer
+        return {string_is_number(extract_first_string(line)), true};
+    }
+
+    input_file.clear();
+    input_file.seekg(current_position);
+    return {false, false};
 }
 
 
@@ -458,8 +457,14 @@ void primeira_passagem(const std::string &input_filename) {
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
                 }
                 int tam_diretiva = 2;
-                if (simbolo->first == "SPACE" && !diretiva_space_has_args(words, i, input_file))
+                auto has_args = diretiva_has_args(words, i, input_file);
+
+                if (simbolo->first == "SPACE" && has_args.first)
                     tam_diretiva = 1;
+                
+                // arg esta na proxima linha
+                if (has_args.second)
+                    start_line_from = 1;
 
                 i += tam_diretiva;
                 contador_posicao++;
