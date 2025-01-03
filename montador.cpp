@@ -37,10 +37,35 @@ const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
 // definir a tabela de diretivas (opcode_diretiva, tam_diretiva)
 const std::unordered_map<std::string, int> tabela_diretivas = {
     {"CONST", 2},
-    {"SPACE", 1}
+    {"SPACE", -1} // -1 significa tamanho variavel, para space 1 ou 2
 };
 
 std::unordered_map<std::string, int> tabela_simbolos;
+
+
+void extract_words_from_line(const std::string& line, std::vector<std::string>& words) {
+    std::string processed_line = line;
+    std::replace(processed_line.begin(), processed_line.end(), ',', ' '); // separa strings que estao unidas por virgula (COPY args)
+
+    std::istringstream stream(processed_line);
+    std::string word;
+    words.clear(); 
+
+    while (stream >> word)
+        words.push_back(word);
+}
+
+std::string extract_first_string(const std::string& line) {
+    std::istringstream stream(line);
+    std::string first_string;
+    stream >> first_string;
+    return first_string;
+}
+
+
+void throw_error(const std::string &message, int line) {
+    throw std::runtime_error("[linha-" + std::to_string(line) + "]" + message);
+}
 
 
 
@@ -266,6 +291,46 @@ bool word_is_diretiva(const std::string &word) {
 }
 
 
+bool string_is_number(const std::string& s) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[0] == '-') i++; // numero negativo
+    
+    for (; i < s.size(); i++)
+        if (!std::isdigit(s[i])) return false;
+    return true;
+}
+
+
+// Recebe uma diretiva validada e o arquivo de output
+void processa_space(const std::string &s_number, std::ofstream &output_file) {
+    int number = std::stoi(s_number);
+        for (int k = 0; k < number; k++)
+            output_file << "0" << " ";
+}
+
+bool diretiva_space_has_args(std::vector<std::string> &words, const int idx, std::ifstream &input_file) {
+    bool boolean = false;
+    int j = idx + 1;
+    if (j < words.size() && string_is_number(words[j])) boolean = true;
+    else if (j < words.size() && !string_is_number(words[j])) boolean = false;
+    else {
+        std::string line;
+        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+        
+        if (!std::getline(input_file, line)) {
+
+            if(string_is_number(&line[0])) boolean = true;
+            else boolean = false;
+        }
+        
+        input_file.clear(); // Clear the EOF flag if needed
+        input_file.seekg(posicao_linha_atual);
+        
+    }
+    return boolean;
+}
+
 
 int get_instruction_size(const std::string &word) {
     auto instrucao = tabela_operacoes.find(word);
@@ -328,15 +393,10 @@ void primeira_passagem(const std::string &input_filename) {
             continue;
         }
    
-        std::replace(line.begin(), line.end(), ',', ' ');// replace virgula por espaços para lidar com o COPY
-        std::istringstream stream(line);
+        
         std::vector<std::string> words;
+        extract_words_from_line(line, words);
         
-        // Extrai todas as palvras da linha
-        while (stream >> word)
-            words.push_back(word);
-        
-
         int i = 0;
         while (i < words.size()) {
             // verifica se alguma palavra foi usada em alguma instrucao anterior
@@ -397,7 +457,11 @@ void primeira_passagem(const std::string &input_filename) {
                 if (simbolo == tabela_diretivas.end()) {
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
                 }
-                i += simbolo->second;
+                int tam_diretiva = 2;
+                if (simbolo->first == "SPACE" && !diretiva_space_has_args(words, i, input_file))
+                    tam_diretiva = 1;
+
+                i += tam_diretiva;
                 contador_posicao++;
             }
             else {
@@ -407,29 +471,6 @@ void primeira_passagem(const std::string &input_filename) {
         }
         contador_linha++;
         
-        // while (stream >> word) {
-        //     if (word_is_label(word)) {
-        //         std::string formatted_label = word;
-        //         formatted_label.pop_back(); // remove ':'
-        //         if (is_simbolo_exists(formatted_label)) 
-        //             throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + word + " ja foi definido.");
-        //         tabela_simbolos[formatted_label] = contador_posicao;
-        //     }
-        //     else if (word_is_instruction(word)) {
-        //         int tam_instrucao = get_instruction_size(word);
-        //         contador_posicao += tam_instrucao;
-        //         operacao_found = true;
-        //     }
-        //     else if (word_is_diretiva(word)) {
-        //         std::cout << "Eh uma diretiva (contador_posicao + 1) - working in progress" << std::endl;
-        //         contador_posicao++;
-        //         operacao_found = true;
-        //     }
-        //     // else {
-        //     //     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + word + " nao identificada.");
-        //     // }
-        // }
-        // contador_linha++;
         
     }
     input_file.close();
@@ -455,7 +496,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
     int contador_posicao = 0;
     int contador_linha = 1;
     std::string word;
-
+    int start_line_from = -1;
     
 
     while (std::getline(input_file, line)) {
@@ -463,32 +504,32 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
             contador_linha++;
             continue;
         }
-        // replace virgula por espaços para lidar com o COPY
-        std::replace(line.begin(), line.end(), ',', ' ');
-
-        std::istringstream stream(line);
+        
         std::vector<std::string> words;
+        extract_words_from_line(line, words);
+
         int opcode = -1;
         int operando_posicao_mem = -1;
         bool has_label = false;
         
 
-
-        // Extrai todas as palvras da linha
-        while (stream >> word)
-            words.push_back(word);
-
-        
         int i = 0;
         while (i < words.size()) {
             std::string x = words[i];
+            // verifica se alguma palavra foi usada em alguma instrucao anterior
+            if (start_line_from != -1) {
+                i = start_line_from;
+                
+            }
+            start_line_from = -1;
+            if (i >= words.size()) break;
+
             if (word_is_label(words[i])) {
                 if (!is_lexical_valid(words[i]))
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Erro lexico " + word);
                 i++;
                 continue;
             }
-
             else if (word_is_instruction(words[i])) {
                 std::vector<std::string> operandos;
 
@@ -516,9 +557,11 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                     std::replace(line.begin(), line.end(), ',', ' ');
 
                     std::istringstream next_stream(line);
+                    start_line_from = 0;
                     while (next_stream >> word) {
                         operandos.push_back(word);
                         operandos_size++;
+                        start_line_from++;
                         if (operandos_size == qtd_operandos) {
                             input_file.clear(); // Clear the EOF flag if needed
                             input_file.seekg(posicao_linha_atual);
@@ -542,9 +585,83 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 }
                 i += tam_instrucao;
             }
+            else if (word_is_diretiva(words[i])) {
+                int tam_diretiva = 1; //padrao 1
+                std::string next_word;
+
+                if (words[i] == "CONST") {
+                    tam_diretiva = 2;
+                    int j = i + 1;
+                    // mesma linbha
+                    if (j < words.size()) {
+                        if (!string_is_number(words[j]))
+                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+                        output_file << words[j] << " "; 
+                    } else if (j == words.size()) {
+                        // procura na proxima linha
+                        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+                        if (!std::getline(input_file, line)) 
+                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[i]);
+
+                        next_word = extract_first_string(line);
+                        if(!string_is_number(next_word))
+                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+                        
+                        output_file << next_word << " ";
+                        input_file.clear(); // Clear the EOF flag if needed
+                        input_file.seekg(posicao_linha_atual);
+                        start_line_from = 1;
+                          
+                    }
+                    else {
+                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+                    }
+                }
+                else if (words[i] == "SPACE") {
+                    int j = i + 1;
+                    if (j <  words.size()) {
+                        if (!string_is_number(words[j]))
+                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+                        processa_space(words[j], output_file);
+                        tam_diretiva = 2;
+                    }
+                    else if (j == words.size()) {
+                        // procura na proxima linha
+                        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+                        if (!std::getline(input_file, line)) {
+                            tam_diretiva = 1;
+                            output_file << "0" << " ";
+                        }
+                        else {
+                            // isso aqui ta feio demais kk
+                            next_word = extract_first_string(line);
+                            if(word_is_label(next_word)) {
+                                tam_diretiva = 1;
+                                output_file << "0" << " ";
+                            }
+                            else if (string_is_number(next_word)) {
+                                processa_space(next_word, output_file);
+                                start_line_from = 1;
+                                tam_diretiva = 2;
+                            }
+                            else 
+                                throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
+                            
+                        }
+                        
+                        input_file.clear(); // Clear the EOF flag if needed
+                        input_file.seekg(posicao_linha_atual);
+                    } 
+                    else {
+                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
+                    }
+                    
+                }
+                i+=tam_diretiva;
+            }
             
             else {
-                i++;
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + words[i] + " nao identificada.");
             }
 
         }
