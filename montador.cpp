@@ -327,24 +327,18 @@ void primeira_passagem(const std::string &input_filename) {
             contador_linha++;
             continue;
         }
-
-        
-        
-
-        
-       
+   
         std::replace(line.begin(), line.end(), ',', ' ');// replace virgula por espaços para lidar com o COPY
         std::istringstream stream(line);
-         std::vector<std::string> words;
+        std::vector<std::string> words;
         
         // Extrai todas as palvras da linha
         while (stream >> word)
             words.push_back(word);
         
 
-        // OBSERVACAO IMPORTANTE PRA CARALHO: PRECISA MUDAR ESSE LOOP FOR POR UM WHILE E CONTROLAR
-        // O VALOR DE i MANUALMENTE, POIS A LOGICA ESTA CONFUDA QUANDO SE FAZ i += tam_instrucao
-        for (int i = 0; i < words.size(); i++) {
+        int i = 0;
+        while (i < words.size()) {
             // verifica se alguma palavra foi usada em alguma instrucao anterior
             if (start_line_from != -1) {
                 i = start_line_from;
@@ -360,11 +354,12 @@ void primeira_passagem(const std::string &input_filename) {
                 if (is_simbolo_exists(formatted_label)) 
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + words[i] + " ja foi definido.");
                 tabela_simbolos[formatted_label] = contador_posicao;
+                i++;
             }
             else if (word_is_instruction(words[i])) {
                 int tam_instrucao = get_instruction_size(words[i]);
                 int tam_instrucao_atual = 1; // considera o simbolo como parte da instrucao
-                int j = i + 1;
+                size_t j = i + 1;
                 while (j < words.size() && tam_instrucao_atual < tam_instrucao) {
                     j++;
                     tam_instrucao_atual++;
@@ -395,14 +390,14 @@ void primeira_passagem(const std::string &input_filename) {
 
 
                 contador_posicao += tam_instrucao;
-                i += tam_instrucao - 1;
+                i += tam_instrucao;
             }
             else if (word_is_diretiva(words[i])) {
                 auto simbolo = tabela_diretivas.find(words[i]);
                 if (simbolo == tabela_diretivas.end()) {
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
                 }
-                i += simbolo->second - 1;
+                i += simbolo->second;
                 contador_posicao++;
             }
             else {
@@ -483,17 +478,14 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
         while (stream >> word)
             words.push_back(word);
 
-         size_t total_words = words.size();
-         int i = 0;
-
-        // OBSERVACAO IMPORTANTE PRA CARALHO: PRECISA MUDAR ESSE LOOP FOR POR UM WHILE E CONTROLAR
-        // O VALOR DE i MANUALMENTE, POIS A LOGICA ESTA CONFUDA QUANDO SE FAZ i += tam_instrucao
-        for (; i < total_words; i++) {
+        
+        int i = 0;
+        while (i < words.size()) {
             std::string x = words[i];
             if (word_is_label(words[i])) {
                 if (!is_lexical_valid(words[i]))
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Erro lexico " + word);
-                has_label = true;
+                i++;
                 continue;
             }
 
@@ -501,15 +493,15 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 std::vector<std::string> operandos;
 
                 // verifica a quantidade de operandos de acordo com tam_instrucao
-                int tam_instrucao = get_instruction_size(words[i]) - 1; // -1 desconsidera o simbolo da instrucao (ex: LOAD)
-                // if (has_label) tam_instrucao++;
+                int tam_instrucao = get_instruction_size(words[i]); 
+                int qtd_operandos = tam_instrucao - 1;  // -1 desconsidera o simbolo da instrucao (ex: LOAD)
                 
                 opcode = get_instruction_opcode(words[i]);
                 output_file << opcode << " ";
 
                 // coleta operandos da linha atual
                 size_t j = i + 1;
-                while (j < total_words && operandos.size() < tam_instrucao) {
+                while (j < words.size() && operandos.size() < qtd_operandos) {
                     operandos.push_back(words[j]);
                     j++;
                 }   
@@ -517,7 +509,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 int operandos_size = operandos.size();
                 std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
                 // coleta operandos de proximas linhas
-                while (operandos_size < tam_instrucao) {
+                while (operandos_size < qtd_operandos) {
                     if (!std::getline(input_file, line)) {
                         throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[i]);
                     }
@@ -527,7 +519,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                     while (next_stream >> word) {
                         operandos.push_back(word);
                         operandos_size++;
-                        if (operandos_size == tam_instrucao) {
+                        if (operandos_size == qtd_operandos) {
                             input_file.clear(); // Clear the EOF flag if needed
                             input_file.seekg(posicao_linha_atual);
                             break;
@@ -548,9 +540,12 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                     operando_posicao_mem = get_simbol_mem_posicao(operandos[j]);
                     output_file << operando_posicao_mem  << " "; 
                 }
-                i += tam_instrucao; // +1 pois considera o simbolo da instrucao (ex: LOAD)
+                i += tam_instrucao;
             }
             
+            else {
+                i++;
+            }
 
         }
         contador_linha++;
