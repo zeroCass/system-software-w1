@@ -37,7 +37,7 @@ const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
 // definir a tabela de diretivas (opcode_diretiva, tam_diretiva)
 const std::unordered_map<std::string, int> tabela_diretivas = {
     {"CONST", 2},
-    {"SPACE", -1} // -1 significa tamanho variavel, para space 1 ou 2
+    {"SPACE", 1} // normalmente space so tem tamnho 1, mas pode ter 2
 };
 
 std::unordered_map<std::string, int> tabela_simbolos;
@@ -67,6 +67,19 @@ void throw_error(const std::string &message, int line) {
     throw std::runtime_error("[linha-" + std::to_string(line) + "]" + message);
 }
 
+std::ifstream open_input_file(const std::string& filename) {
+    std::ifstream input_file(filename);
+    if (!input_file.is_open()) 
+        throw std::runtime_error("Não foi possível abrir o arquivo: " + filename);
+    return input_file;
+}
+
+std::ofstream open_output_file(const std::string& filename) {
+    std::ofstream output_file(filename);
+    if (!output_file.is_open()) 
+        throw std::runtime_error("Não foi possível abrir o arquivo: " + filename);
+    return output_file;
+}
 
 
 // Converte uma string para uppercase
@@ -339,6 +352,15 @@ int get_instruction_size(const std::string &word) {
     return -1;
 }
 
+int get_diretiva_size(const std::string &word) {
+    auto instrucao = tabela_diretivas.find(word);
+    if (instrucao != tabela_diretivas.end()) {
+        return instrucao->second; // retorna o tamanho operacao
+    }
+    return -1;
+}
+
+
 int get_instruction_opcode(const std::string &word) {
     auto instrucao = tabela_operacoes.find(word);
     if (instrucao != tabela_operacoes.end()) {
@@ -376,10 +398,45 @@ std::string correct_single_labels(std::ifstream &input_file, const std::string &
 }
 
 
+// Extract operand from the line or other lines if necessary
+std::vector<std::string> extract_operands(std::ifstream& input_file, std::vector<std::string> words, int qtd_operandos, int idx_atual, int contador_linha, int& start_line_from) {
+    std::vector<std::string> operandos;
+    
+    
+    // coleta operandos da linha atual
+    size_t j = idx_atual + 1;
+    while (j < words.size() && operandos.size() < qtd_operandos) {
+        operandos.push_back(words[j]);
+        j++;
+    }  
+
+    // If there are more operandos to collect, read more lines
+    if (operandos.size() < qtd_operandos) {
+        std::string line;
+        std::string word;
+        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+        if (!std::getline(input_file, line)) {
+            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "] Número de operandos insuficiente.");
+        }
+
+        std::replace(line.begin(), line.end(), ',', ' '); // Normalize commas to spaces
+        std::istringstream next_stream(line);
+        start_line_from = 0;
+        while (next_stream >> word && operandos.size() < qtd_operandos) {
+            operandos.push_back(word);
+            start_line_from++;
+        }
+        input_file.clear(); // Clear the EOF flag if needed
+        input_file.seekg(posicao_linha_atual); // reseta ponteiro
+    }
+
+    return operandos;
+}
+
+
+
 void primeira_passagem(const std::string &input_filename) {
-    std::ifstream input_file(input_filename);
-    if (!input_file.is_open()) 
-        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
+    std::ifstream input_file = open_input_file(input_filename);
     std::string line;
     int contador_posicao = 0;
     int contador_linha = 1;
@@ -417,37 +474,8 @@ void primeira_passagem(const std::string &input_filename) {
             }
             else if (word_is_instruction(words[i])) {
                 int tam_instrucao = get_instruction_size(words[i]);
-                int tam_instrucao_atual = 1; // considera o simbolo como parte da instrucao
-                size_t j = i + 1;
-                while (j < words.size() && tam_instrucao_atual < tam_instrucao) {
-                    j++;
-                    tam_instrucao_atual++;
-                }
-
-                std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-                // procura operandos em outras linhas
-                if (tam_instrucao != tam_instrucao_atual) {
-                    start_line_from = 0;
-                    while (tam_instrucao_atual < tam_instrucao) {
-                        if (!std::getline(input_file, line)) {
-                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[i]);
-                        }
-                        std::replace(line.begin(), line.end(), ',', ' ');
-                        std::istringstream next_stream(line);
-                        while (next_stream >> word) {
-                            start_line_from++;
-                            tam_instrucao_atual++;
-                            if (tam_instrucao_atual == tam_instrucao) {
-                                input_file.clear(); // Clear the EOF flag if needed
-                                input_file.seekg(posicao_linha_atual); // reseta ponteiro do arquivo para linha anterior
-                                break;
-                            }
-                        }                        
-                    }
-
-                }
-
-
+                int qtd_operandos = tam_instrucao - 1; // considera o simbolo como parte da instrucao
+                extract_operands(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 contador_posicao += tam_instrucao;
                 i += tam_instrucao;
             }
@@ -487,14 +515,81 @@ bool is_lexical_valid(const std::string &word) {
     return std::regex_match(word, pattern);
 }
 
+// Função que processa a diretiva e retorna o tamanho dela
+int processa_diretiva(std::ifstream& input_file, std::ofstream& output_file, std::vector<std::string>& words, int idx_atual, int contador_linha, int& start_line_from) {
+    int tam_diretiva = get_diretiva_size(words[idx_atual]);
+    std::string next_word;
+    std::string line;
+
+    if (words[idx_atual] == "CONST") {
+        int j = idx_atual + 1;
+        // mesma linbha
+        if (j < words.size()) {
+            if (!string_is_number(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            output_file << words[j] << " "; 
+        } else {
+            // procura na proxima linha
+            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+            if (!std::getline(input_file, line)) 
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
+
+            next_word = extract_first_string(line);
+            if(!string_is_number(next_word))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            
+            output_file << next_word << " ";
+            input_file.clear(); // Clear the EOF flag if needed
+            input_file.seekg(posicao_linha_atual);
+            start_line_from = 1;
+                
+        }
+    }
+    else if (words[idx_atual] == "SPACE") {
+        int j = idx_atual + 1;
+        if (j <  words.size()) {
+            // se proxa palavra eh diretiva, entao tamanho default
+            if (word_is_label(words[j]))
+                return tam_diretiva;
+
+            if (!string_is_number(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            processa_space(words[j], output_file);
+            tam_diretiva = 2;
+        }
+        else {
+            // procura na proxima linha
+            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+            if (!std::getline(input_file, line)) {
+                output_file << "0" << " ";
+            }
+            else {
+                // isso aqui ta feio demais kk
+                next_word = extract_first_string(line);
+                if(word_is_label(next_word)) {
+                    output_file << "0" << " ";
+                }
+                else if (string_is_number(next_word)) {
+                    processa_space(next_word, output_file);
+                    start_line_from = 1;
+                    tam_diretiva = 2;
+                }
+                else 
+                    throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
+                
+            }
+            
+            input_file.clear(); // Clear the EOF flag if needed
+            input_file.seekg(posicao_linha_atual);
+        }
+    }
+    return tam_diretiva;
+}
+
+
 void segunda_passagem(const std::string &input_filename, const std::string &output_filename) {
-    std::ifstream input_file(input_filename);
-    if (!input_file.is_open()) 
-        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
-    
-    std::ofstream output_file(output_filename);
-    if (!output_file.is_open()) 
-        throw std::runtime_error("Não foi possivel abrir o arquivo: " + output_filename);
+    std::ifstream input_file = open_input_file(input_filename);
+    std::ofstream output_file = open_output_file(output_filename);
     
 
     std::string line;
@@ -545,39 +640,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 opcode = get_instruction_opcode(words[i]);
                 output_file << opcode << " ";
 
-                // coleta operandos da linha atual
-                size_t j = i + 1;
-                while (j < words.size() && operandos.size() < qtd_operandos) {
-                    operandos.push_back(words[j]);
-                    j++;
-                }   
-                
-                int operandos_size = operandos.size();
-                std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-                // coleta operandos de proximas linhas
-                while (operandos_size < qtd_operandos) {
-                    if (!std::getline(input_file, line)) {
-                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[i]);
-                    }
-                    std::replace(line.begin(), line.end(), ',', ' ');
-
-                    std::istringstream next_stream(line);
-                    start_line_from = 0;
-                    while (next_stream >> word) {
-                        operandos.push_back(word);
-                        operandos_size++;
-                        start_line_from++;
-                        if (operandos_size == qtd_operandos) {
-                            input_file.clear(); // Clear the EOF flag if needed
-                            input_file.seekg(posicao_linha_atual);
-                            break;
-                        }
-                    }                        
-                }
-
-                
-                
-
+                operandos = extract_operands(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 // valida os operandos
                 for (size_t j = 0; j < operandos.size(); j++) {
                     if (word_is_instruction(operandos[j]))
@@ -591,78 +654,8 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 i += tam_instrucao;
             }
             else if (word_is_diretiva(words[i])) {
-                int tam_diretiva = 1; //padrao 1
-                std::string next_word;
-
-                if (words[i] == "CONST") {
-                    tam_diretiva = 2;
-                    int j = i + 1;
-                    // mesma linbha
-                    if (j < words.size()) {
-                        if (!string_is_number(words[j]))
-                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
-                        output_file << words[j] << " "; 
-                    } else if (j == words.size()) {
-                        // procura na proxima linha
-                        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-                        if (!std::getline(input_file, line)) 
-                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[i]);
-
-                        next_word = extract_first_string(line);
-                        if(!string_is_number(next_word))
-                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
-                        
-                        output_file << next_word << " ";
-                        input_file.clear(); // Clear the EOF flag if needed
-                        input_file.seekg(posicao_linha_atual);
-                        start_line_from = 1;
-                          
-                    }
-                    else {
-                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
-                    }
-                }
-                else if (words[i] == "SPACE") {
-                    int j = i + 1;
-                    if (j <  words.size()) {
-                        if (!string_is_number(words[j]))
-                            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
-                        processa_space(words[j], output_file);
-                        tam_diretiva = 2;
-                    }
-                    else if (j == words.size()) {
-                        // procura na proxima linha
-                        std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-                        if (!std::getline(input_file, line)) {
-                            tam_diretiva = 1;
-                            output_file << "0" << " ";
-                        }
-                        else {
-                            // isso aqui ta feio demais kk
-                            next_word = extract_first_string(line);
-                            if(word_is_label(next_word)) {
-                                tam_diretiva = 1;
-                                output_file << "0" << " ";
-                            }
-                            else if (string_is_number(next_word)) {
-                                processa_space(next_word, output_file);
-                                start_line_from = 1;
-                                tam_diretiva = 2;
-                            }
-                            else 
-                                throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
-                            
-                        }
-                        
-                        input_file.clear(); // Clear the EOF flag if needed
-                        input_file.seekg(posicao_linha_atual);
-                    } 
-                    else {
-                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
-                    }
-                    
-                }
-                i+=tam_diretiva;
+                int tam_diretiva = processa_diretiva(input_file, output_file, words, i, contador_linha, start_line_from);
+                i += tam_diretiva;
             }
             
             else {
@@ -679,9 +672,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
 
 // Função que processa o código de Assembly
 void processar_assembly(const std::string &input_filename, const std::string &output_filename) {
-    std::ifstream input_file(input_filename);
-    if (!input_file.is_open()) 
-        throw std::runtime_error("Não foi possivel abrir o arquivo: " + input_filename);
+    std::ifstream input_file = open_input_file(input_filename);
     
     std::string line;
     std::vector<std::string> output_lines;
@@ -696,9 +687,7 @@ void processar_assembly(const std::string &input_filename, const std::string &ou
     }
     input_file.close();
 
-    std::ofstream output_file(output_filename);
-    if (!output_file.is_open()) 
-        throw std::runtime_error("Não foi possivel abrir o arquivo: " + output_filename);
+    std::ofstream output_file = open_output_file(output_filename);
     
     for (int i = 0; i < output_lines.size(); i++) {
         output_file << output_lines[i] << std::endl;
