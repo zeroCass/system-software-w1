@@ -463,7 +463,7 @@ void primeira_passagem(const std::string &input_filename) {
                     tam_diretiva = 1;
                 
                 // arg esta na proxima linha
-                if (has_args.second)
+                if (has_args.first && has_args.second)
                     start_line_from = 1;
 
                 i += tam_diretiva;
