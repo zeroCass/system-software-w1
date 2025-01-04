@@ -42,7 +42,10 @@ const std::unordered_map<std::string, int> tabela_diretivas = {
 
 std::unordered_map<std::string, int> tabela_simbolos;
 
+std::string g_ojb_output; // armazena a output string
 
+
+// Helpers Functions
 void extract_words_from_line(const std::string& line, std::vector<std::string>& words) {
     std::string processed_line = line;
     std::replace(processed_line.begin(), processed_line.end(), ',', ' '); // separa strings que estao unidas por virgula (COPY args)
@@ -62,7 +65,6 @@ std::string extract_first_string(const std::string& line) {
     return first_string;
 }
 
-
 void throw_error(const std::string &message, int line) {
     throw std::runtime_error("[linha-" + std::to_string(line) + "]" + message);
 }
@@ -81,12 +83,113 @@ std::ofstream open_output_file(const std::string& filename) {
     return output_file;
 }
 
-
 // Converte uma string para uppercase
 void to_uppercase(std::string &line) {
     std::transform(line.begin(), line.end(), line.begin(), ::toupper);
 }
 
+// Funcção que verifica se uma label está sozinha dada uma linha
+bool is_single_label(const std::string &line) {
+    if (line.empty()) return false;
+    
+    std::istringstream stream(line);
+    std::string word;
+    std::vector<std::string> words;
+        // Split the line into words
+    while (stream >> word) {
+        words.push_back(word);
+    }
+
+    if (words[0].back() == ':' && words.size() == 1)
+        return true;
+    return false;
+}
+
+// Função que verifica se um palavra é uma label
+bool word_is_label(const std::string &word) {
+    if (!word.empty() && word.back() == ':')
+        return true;
+    return false;
+}
+
+// Verifica se uma palavra eh uma instrução
+bool word_is_instruction(const std::string &word) {
+    if (tabela_operacoes.find(word) != tabela_operacoes.end())
+        return true;
+    return false;
+}
+
+
+bool word_is_diretiva(const std::string &word) {
+    if (tabela_diretivas.find(word) != tabela_diretivas.end())
+        return true;
+    return false;
+}
+
+// Funcao que verifica se uma string eh um numero valido
+bool string_is_number(const std::string& s) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[0] == '-') i++; // numero negativo
+    
+    for (; i < s.size(); i++)
+        if (!std::isdigit(s[i])) return false;
+    return true;
+}
+
+int get_instruction_size(const std::string &word) {
+    auto instrucao = tabela_operacoes.find(word);
+    if (instrucao != tabela_operacoes.end()) {
+        return instrucao->second.tam_instrucao; // retorna o tamanho operacao
+    }
+    return -1;
+}
+
+int get_diretiva_size(const std::string &word) {
+    auto instrucao = tabela_diretivas.find(word);
+    if (instrucao != tabela_diretivas.end()) {
+        return instrucao->second; // retorna o tamanho operacao
+    }
+    return -1;
+}
+
+int get_instruction_opcode(const std::string &word) {
+    auto instrucao = tabela_operacoes.find(word);
+    if (instrucao != tabela_operacoes.end()) {
+        return instrucao->second.opcode_num; // retorna o opcode
+    }
+    return -1;
+}
+
+bool is_simbolo_exists(const std::string &word) {
+    if (tabela_simbolos.find(word) != tabela_simbolos.end())
+        return true;
+    return false;
+}
+
+int get_simbol_mem_posicao(const std::string &word) {
+    auto simbolo = tabela_simbolos.find(word);
+    if (simbolo != tabela_simbolos.end()) {
+        return simbolo->second; // retorna posicao de memoria
+    }
+    return -1;
+}
+
+// Funcao que verifica se a label não possui erros lexicos
+bool is_lexical_valid(const std::string &word) {
+    std::regex pattern(R"(^[a-zA-Z_][a-zA-Z0-9_]*:$)");
+    return std::regex_match(word, pattern);
+}
+
+// Funcao que escreve a string obj para outputfile
+void obj_to_outputfile(const std::string& output_filename) {
+    std::ofstream output_file = open_output_file(output_filename);
+    g_ojb_output.pop_back(); // remove o ultimo espaço
+    output_file << g_ojb_output;
+    output_file.close();
+}
+
+// Others Functions
 
 // Ordena as sessoes do codigo de tal forma que a SECTION TEXT seja sempre a primeira e SECTION DATA a ultima
 void reordenar_sections(const std::string &input_filename, const std::string &output_filename) {
@@ -143,7 +246,6 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
 
 }
 
-
 // Função que remove comentários em qualquer lugar do código, incluindo no meio da linha (entre operações)
 // e no começo da linha. Porem, não permite o uso de palavras reservados dentro do comentario
 std::string remover_comentarios(const std::string &line) {
@@ -190,7 +292,6 @@ std::string remover_comentarios(const std::string &line) {
     return new_line;
 }
 
-
 // Funcao simplificada que remove comentarios do codigo
 // comentarios no começo da linha anulam a ela 
 // comentarios no fim da linha são removidos
@@ -207,7 +308,6 @@ std::string remover_comentarios_simples(std::string &line) {
     return new_line;
 
 }
-
 
 // Função que remove espaços desnecessários em uma linha
 std::string remover_espacos(const std::string &line) {
@@ -248,7 +348,6 @@ std::string remover_espacos(const std::string &line) {
     return resultado;
 }
 
-
 // Função que remove comentários e espaços desnecessários
 std::string preprocessar_linha(const std::string &line) {
     if (line.empty()) return std::string();
@@ -265,64 +364,15 @@ std::string preprocessar_linha(const std::string &line) {
     return new_line;
 }
 
-// Funcção que verifica se uma label está sozinha dada uma linha
-bool is_single_label(const std::string &line) {
-    if (line.empty()) return false;
-    
-    std::istringstream stream(line);
-    std::string word;
-    std::vector<std::string> words;
-        // Split the line into words
-    while (stream >> word) {
-        words.push_back(word);
-    }
-
-    if (words[0].back() == ':' && words.size() == 1)
-        return true;
-    return false;
-}
-
-// Função que verifica se um palavra é uma label
-bool word_is_label(const std::string &word) {
-    if (!word.empty() && word.back() == ':')
-        return true;
-    return false;
-}
-
-// Verifica se uma palavra eh uma instrução
-bool word_is_instruction(const std::string &word) {
-    if (tabela_operacoes.find(word) != tabela_operacoes.end())
-        return true;
-    return false;
-}
-
-
-bool word_is_diretiva(const std::string &word) {
-    if (tabela_diretivas.find(word) != tabela_diretivas.end())
-        return true;
-    return false;
-}
-
-
-bool string_is_number(const std::string& s) {
-    if (s.empty()) return false;
-    size_t i = 0;
-    if (s[0] == '-') i++; // numero negativo
-    
-    for (; i < s.size(); i++)
-        if (!std::isdigit(s[i])) return false;
-    return true;
-}
-
-
-// Recebe uma diretiva validada e o arquivo de output
-void processa_space(const std::string &s_number, std::ofstream &output_file) {
+// Recebe a diretiva SPACE validada e o arquivo de output para alocar o spaco
+void aloca_space(const std::string &s_number) {
     int number = std::stoi(s_number);
         for (int k = 0; k < number; k++)
-            output_file << "0" << " ";
+            g_ojb_output.append("0 ");
 }
 
-// Funcao que retorna { has_arg: boolean, in_next_line: boolean }
+// Funcao que verifica se a diretiva possui argumentos
+// retorna { has_arg: boolean, in_next_line: boolean }
 std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx, std::ifstream &input_file) {
     int j = idx + 1;
     if (j < words.size()) {
@@ -343,48 +393,6 @@ std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx
     return {false, false};
 }
 
-
-int get_instruction_size(const std::string &word) {
-    auto instrucao = tabela_operacoes.find(word);
-    if (instrucao != tabela_operacoes.end()) {
-        return instrucao->second.tam_instrucao; // retorna o tamanho operacao
-    }
-    return -1;
-}
-
-int get_diretiva_size(const std::string &word) {
-    auto instrucao = tabela_diretivas.find(word);
-    if (instrucao != tabela_diretivas.end()) {
-        return instrucao->second; // retorna o tamanho operacao
-    }
-    return -1;
-}
-
-
-int get_instruction_opcode(const std::string &word) {
-    auto instrucao = tabela_operacoes.find(word);
-    if (instrucao != tabela_operacoes.end()) {
-        return instrucao->second.opcode_num; // retorna o opcode
-    }
-    return -1;
-}
-
-
-bool is_simbolo_exists(const std::string &word) {
-    if (tabela_simbolos.find(word) != tabela_simbolos.end())
-        return true;
-    return false;
-}
-
-int get_simbol_mem_posicao(const std::string &word) {
-    auto simbolo = tabela_simbolos.find(word);
-    if (simbolo != tabela_simbolos.end()) {
-        return simbolo->second; // retorna posicao de memoria
-    }
-    return -1;
-}
-
-
 // REmove a quebra de linha (permitida) entre labels e instruções
 std::string correct_single_labels(std::ifstream &input_file, const std::string &current_line) {
     std::string next_line;
@@ -397,12 +405,9 @@ std::string correct_single_labels(std::ifstream &input_file, const std::string &
     return current_line; 
 }
 
-
-// Extract operand from the line or other lines if necessary
-std::vector<std::string> extract_operands(std::ifstream& input_file, std::vector<std::string> words, int qtd_operandos, int idx_atual, int contador_linha, int& start_line_from) {
+// Fucao que extrair operandos da linha ou de outras linhas se necessario
+std::vector<std::string> extrair_operandos(std::ifstream& input_file, std::vector<std::string> words, int qtd_operandos, int idx_atual, int contador_linha, int& start_line_from) {
     std::vector<std::string> operandos;
-    
-    
     // coleta operandos da linha atual
     size_t j = idx_atual + 1;
     while (j < words.size() && operandos.size() < qtd_operandos) {
@@ -433,7 +438,104 @@ std::vector<std::string> extract_operands(std::ifstream& input_file, std::vector
     return operandos;
 }
 
+// Função que processa a diretiva 
+// Retorna Erro ou tamanho da diretiva
+int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words, int idx_atual, int contador_linha, int& start_line_from) {
+    int tam_diretiva = get_diretiva_size(words[idx_atual]);
+    std::string next_word;
+    std::string line;
 
+    if (words[idx_atual] == "CONST") {
+        int j = idx_atual + 1;
+        // mesma linbha
+        if (j < words.size()) {
+            if (!string_is_number(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            g_ojb_output.append(words[j] + " ");
+        } else {
+            // procura na proxima linha
+            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+            if (!std::getline(input_file, line)) 
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
+
+            next_word = extract_first_string(line);
+            if(!string_is_number(next_word))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            
+            g_ojb_output.append(next_word + " ");
+            input_file.clear(); // Clear the EOF flag if needed
+            input_file.seekg(posicao_linha_atual);
+            start_line_from = 1;
+                
+        }
+    }
+    else if (words[idx_atual] == "SPACE") {
+        int j = idx_atual + 1;
+        if (j <  words.size()) {
+            // se proxa palavra eh diretiva, entao tamanho default
+            if (word_is_label(words[j]))
+                return tam_diretiva;
+
+            if (!string_is_number(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+            aloca_space(words[j]);
+            tam_diretiva = 2;
+        }
+        else {
+            // procura na proxima linha
+            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+            if (!std::getline(input_file, line)) {
+                g_ojb_output.append("0 ");
+            }
+            else {
+                // isso aqui ta feio demais kk
+                next_word = extract_first_string(line);
+                if(word_is_label(next_word)) {
+                    g_ojb_output.append("0 ");
+                }
+                else if (string_is_number(next_word)) {
+                    aloca_space(next_word);
+                    start_line_from = 1;
+                    tam_diretiva = 2;
+                }
+                else 
+                    throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
+                
+            }
+            
+            input_file.clear(); // Clear the EOF flag if needed
+            input_file.seekg(posicao_linha_atual);
+        }
+    }
+    return tam_diretiva;
+}
+
+
+// Principais Funcoes
+
+void passagem_zero(const std::string &input_filename, const std::string &output_filename) {
+    std::ifstream input_file = open_input_file(input_filename);
+    
+    std::string line;
+    std::vector<std::string> output_lines;
+
+    while (std::getline(input_file, line)) {
+        
+        line = preprocessar_linha(line);
+        if (is_single_label(line)) line = correct_single_labels(input_file, line);
+        if (line.empty()) continue; // Ignorar linhas vazias
+
+        output_lines.push_back(line);
+    }
+    input_file.close();
+
+    std::ofstream output_file = open_output_file(output_filename);
+    
+    for (int i = 0; i < output_lines.size(); i++) {
+        output_file << output_lines[i] << std::endl;
+    }
+    output_file.close();
+}
 
 void primeira_passagem(const std::string &input_filename) {
     std::ifstream input_file = open_input_file(input_filename);
@@ -475,7 +577,7 @@ void primeira_passagem(const std::string &input_filename) {
             else if (word_is_instruction(words[i])) {
                 int tam_instrucao = get_instruction_size(words[i]);
                 int qtd_operandos = tam_instrucao - 1; // considera o simbolo como parte da instrucao
-                extract_operands(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
+                extrair_operandos(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 contador_posicao += tam_instrucao;
                 i += tam_instrucao;
             }
@@ -509,89 +611,9 @@ void primeira_passagem(const std::string &input_filename) {
     input_file.close();
 }
 
-// Funcao que verifica se a label não possui erros lexicos
-bool is_lexical_valid(const std::string &word) {
-    std::regex pattern(R"(^[a-zA-Z_][a-zA-Z0-9_]*:$)");
-    return std::regex_match(word, pattern);
-}
-
-// Função que processa a diretiva e retorna o tamanho dela
-int processa_diretiva(std::ifstream& input_file, std::ofstream& output_file, std::vector<std::string>& words, int idx_atual, int contador_linha, int& start_line_from) {
-    int tam_diretiva = get_diretiva_size(words[idx_atual]);
-    std::string next_word;
-    std::string line;
-
-    if (words[idx_atual] == "CONST") {
-        int j = idx_atual + 1;
-        // mesma linbha
-        if (j < words.size()) {
-            if (!string_is_number(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            output_file << words[j] << " "; 
-        } else {
-            // procura na proxima linha
-            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-            if (!std::getline(input_file, line)) 
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
-
-            next_word = extract_first_string(line);
-            if(!string_is_number(next_word))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            
-            output_file << next_word << " ";
-            input_file.clear(); // Clear the EOF flag if needed
-            input_file.seekg(posicao_linha_atual);
-            start_line_from = 1;
-                
-        }
-    }
-    else if (words[idx_atual] == "SPACE") {
-        int j = idx_atual + 1;
-        if (j <  words.size()) {
-            // se proxa palavra eh diretiva, entao tamanho default
-            if (word_is_label(words[j]))
-                return tam_diretiva;
-
-            if (!string_is_number(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            processa_space(words[j], output_file);
-            tam_diretiva = 2;
-        }
-        else {
-            // procura na proxima linha
-            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
-            if (!std::getline(input_file, line)) {
-                output_file << "0" << " ";
-            }
-            else {
-                // isso aqui ta feio demais kk
-                next_word = extract_first_string(line);
-                if(word_is_label(next_word)) {
-                    output_file << "0" << " ";
-                }
-                else if (string_is_number(next_word)) {
-                    processa_space(next_word, output_file);
-                    start_line_from = 1;
-                    tam_diretiva = 2;
-                }
-                else 
-                    throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
-                
-            }
-            
-            input_file.clear(); // Clear the EOF flag if needed
-            input_file.seekg(posicao_linha_atual);
-        }
-    }
-    return tam_diretiva;
-}
-
-
 void segunda_passagem(const std::string &input_filename, const std::string &output_filename) {
     std::ifstream input_file = open_input_file(input_filename);
-    std::ofstream output_file = open_output_file(output_filename);
-    
-
+   
     std::string line;
     int contador_posicao = 0;
     int contador_linha = 1;
@@ -638,9 +660,9 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 int qtd_operandos = tam_instrucao - 1;  // -1 desconsidera o simbolo da instrucao (ex: LOAD)
                 
                 opcode = get_instruction_opcode(words[i]);
-                output_file << opcode << " ";
+                g_ojb_output.append(std::to_string(opcode) + " ");
 
-                operandos = extract_operands(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
+                operandos = extrair_operandos(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 // valida os operandos
                 for (size_t j = 0; j < operandos.size(); j++) {
                     if (word_is_instruction(operandos[j]))
@@ -649,12 +671,12 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
 
                     operando_posicao_mem = get_simbol_mem_posicao(operandos[j]);
-                    output_file << operando_posicao_mem  << " "; 
+                    g_ojb_output.append(std::to_string(operando_posicao_mem) + " ");
                 }
                 i += tam_instrucao;
             }
             else if (word_is_diretiva(words[i])) {
-                int tam_diretiva = processa_diretiva(input_file, output_file, words, i, contador_linha, start_line_from);
+                int tam_diretiva = processa_diretiva(input_file, words, i, contador_linha, start_line_from);
                 i += tam_diretiva;
             }
             
@@ -666,35 +688,8 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
         contador_linha++;
     }
     input_file.close();
-    output_file.close();
+    obj_to_outputfile(output_filename);
 }
-
-
-// Função que processa o código de Assembly
-void processar_assembly(const std::string &input_filename, const std::string &output_filename) {
-    std::ifstream input_file = open_input_file(input_filename);
-    
-    std::string line;
-    std::vector<std::string> output_lines;
-
-    while (std::getline(input_file, line)) {
-        
-        line = preprocessar_linha(line);
-        if (is_single_label(line)) line = correct_single_labels(input_file, line);
-        if (line.empty()) continue; // Ignorar linhas vazias
-
-        output_lines.push_back(line);
-    }
-    input_file.close();
-
-    std::ofstream output_file = open_output_file(output_filename);
-    
-    for (int i = 0; i < output_lines.size(); i++) {
-        output_file << output_lines[i] << std::endl;
-    }
-    output_file.close();
-}
-
 
 int main(int argc, char *argv[]) {
     try {
@@ -715,7 +710,7 @@ int main(int argc, char *argv[]) {
         if (extension == "asm") {
             std::string output_filename = filename + ".pre";  // Nome do arquivo de saída
             reordenar_sections(input_filename, output_filename);
-            processar_assembly(output_filename, output_filename);
+            passagem_zero(output_filename, output_filename);
             std::cout << "Pré-processamento concluído. Código processado gerado em " << output_filename << std::endl;
         }
         else {
