@@ -35,14 +35,39 @@ const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
 };
 
 // definir a tabela de diretivas (opcode_diretiva, tam_diretiva)
-const std::unordered_map<std::string, int> tabela_diretivas = {
-    {"CONST", 2},
-    {"SPACE", 1} // normalmente space so tem tamnho 1, mas pode ter 2
+
+
+struct Diretiva_Info {
+    int tam_diretiva;
+    bool in_header;
 };
 
-std::unordered_map<std::string, int> tabela_simbolos;
+std::unordered_map<std::string, Diretiva_Info> tabela_diretivas = {
+    {"CONST", {2, false}},
+    {"SPACE", {1, false}}, // normalmente space so tem tamnho 1, mas pode ter 2
+    {"BEGIN", {1, true}},
+    {"END", {1, true}},
+    {"PUBLIC", {2, true}},
+    {"EXTERN", {1, true}},
+
+};
+
+// formato: SIMBOLO, VALOR, IS_EXTERN
+struct Simbolo_Info {
+    int posicao_mem;
+    bool is_extern;
+};
+
+std::unordered_map<std::string, Simbolo_Info> tabela_simbolos;
+
+std::unordered_map<std::string, std::vector<int>> tabela_uso;
+
 
 std::string g_ojb_output; // armazena a output string
+int g_is_module = false;
+std::vector<std::pair<std::string, int>> g_public_labels;
+std::vector<std::string> g_external_labels;
+std::vector<int>g_relative_table;
 
 
 // Helpers Functions
@@ -119,12 +144,21 @@ bool word_is_instruction(const std::string &word) {
     return false;
 }
 
-
 bool word_is_diretiva(const std::string &word) {
-    if (tabela_diretivas.find(word) != tabela_diretivas.end())
+    if (tabela_diretivas.find(word) != tabela_diretivas.end()) {
         return true;
+    }
     return false;
 }
+
+bool word_is_diretiva_header(const std::string &word) {
+    auto diretiva = tabela_diretivas.find(word);
+    if (diretiva != tabela_diretivas.end() && diretiva->second.in_header) {
+        return true;
+    }
+    return false;
+}
+
 
 // Funcao que verifica se uma string eh um numero valido
 bool string_is_number(const std::string& s) {
@@ -148,7 +182,7 @@ int get_instruction_size(const std::string &word) {
 int get_diretiva_size(const std::string &word) {
     auto instrucao = tabela_diretivas.find(word);
     if (instrucao != tabela_diretivas.end()) {
-        return instrucao->second; // retorna o tamanho operacao
+        return instrucao->second.tam_diretiva; // retorna o tamanho operacao
     }
     return -1;
 }
@@ -167,10 +201,19 @@ bool is_simbolo_exists(const std::string &word) {
     return false;
 }
 
+bool is_simbolo_extern(const std::string &word) {
+    auto simbolo = tabela_simbolos.find(word);
+    if (simbolo != tabela_simbolos.end() && simbolo->second.is_extern) {
+        return true;
+    }
+    return false;
+}
+
+
 int get_simbol_mem_posicao(const std::string &word) {
     auto simbolo = tabela_simbolos.find(word);
     if (simbolo != tabela_simbolos.end()) {
-        return simbolo->second; // retorna posicao de memoria
+        return simbolo->second.posicao_mem; // retorna posicao de memoria
     }
     return -1;
 }
@@ -185,13 +228,38 @@ bool is_lexical_valid(const std::string &word) {
 void obj_to_outputfile(const std::string& output_filename) {
     std::ofstream output_file = open_output_file(output_filename);
     g_ojb_output.pop_back(); // remove o ultimo espaço
+    
+    if (g_is_module) {
+        // output da tabela de definicao
+        for (size_t i = 0; i < g_public_labels.size(); i++) {
+            output_file << "D, " << g_public_labels[i].first << " " << g_public_labels[i].second << "\n";
+            
+        }
+        output_file << "U, ";
+        for (const auto& [simbolo_name, array] : tabela_uso) {
+            output_file << simbolo_name << " ";
+            for (const auto& val : array) {
+                output_file << val << " ";
+            }
+        }
+        output_file << std::endl;
+
+        output_file << "R, ";
+        for (size_t i = 0; i < g_relative_table.size(); i++) {
+            output_file << g_relative_table[i] << " ";
+        }
+        output_file << std::endl;
+
+    }
     output_file << g_ojb_output;
+    
     output_file.close();
 }
 
 // Others Functions
 
 // Ordena as sessoes do codigo de tal forma que a SECTION TEXT seja sempre a primeira e SECTION DATA a ultima
+// Ja converte cada linha para UPPERCASE
 void reordenar_sections(const std::string &input_filename, const std::string &output_filename) {
     std::ifstream input_file(input_filename);
     if (!input_file.is_open()) 
@@ -206,6 +274,10 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     bool in_section_data = false;
     bool has_section_text = false;
     bool has_section_data = false;
+    bool has_begin = false;
+    bool has_end = true;
+
+    // Funcao assume que SECTION TEXT, SECTION DATA, BEGIN e END estarao sozinhos em um linha
 
     while (std::getline(input_file, line)) {
         // converte para uppercase sempre
@@ -218,6 +290,10 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
             in_section_data = true;
             has_section_data = true;
             in_section_text = false;
+        } else if (line.find("BEGIN")) {
+            has_begin = true;
+        }else if (line.find("END")) {
+            has_end = true;
         } else {
             if (in_section_text)
                 section_text.push_back(line);
@@ -228,6 +304,7 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     input_file.close();
     if (!has_section_text) throw std::runtime_error("Não foi possivel localizar SECTION TEXT no arquivo: " + input_filename);
     if (!has_section_data) throw std::runtime_error("Não foi possivel localizar SECTION DATA no arquivo: " + input_filename);
+    if (has_begin && !has_end || !has_begin && has_end) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
     
     std::ofstream output_file(output_filename);
     if (!output_file.is_open()) 
@@ -244,6 +321,23 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     }
     output_file.close();
 
+}
+
+void define_is_module(const std::string &input_filename) {
+    std::ifstream input_file = open_input_file(input_filename);
+    std::string line;
+    bool has_begin = false;
+    bool has_end = false;
+    while (std::getline(input_file, line)) {
+        if (line.find("BEGIN")) has_begin = true;
+        if (line.find("END")) has_end = true;
+    }
+    input_file.close();
+
+    if (has_begin && !has_end || !has_begin && has_end) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if (has_begin && has_end) g_is_module = true; // define que eh modulo
+
+    
 }
 
 // Função que remove comentários em qualquer lugar do código, incluindo no meio da linha (entre operações)
@@ -507,7 +601,71 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
             input_file.seekg(posicao_linha_atual);
         }
     }
+
     return tam_diretiva;
+}
+
+void processa_diretiva_header(std::ifstream& input_file, std::vector<std::string>& words, int idx_atual, int &contador_linha, int &start_line_from) {
+    std::string line;
+    if (words[idx_atual] == "EXTERN") {
+        // assume que label nao esta sozinha na lina e que ja foi incluida na tabela de simbolos
+        std::string label = words[idx_atual - 1];
+        label.pop_back(); // remove ":"
+        g_external_labels.push_back(label);
+
+
+    }
+    else if (words[idx_atual] == "PUBLIC") {
+        int j = idx_atual + 1;
+        if (j <  words.size()) {
+            // se proxa palavra eh diretiva, entao tamanho default
+            if (word_is_diretiva(words[j]) || word_is_instruction(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+
+            g_public_labels.push_back({words[j], -1});
+        }
+        else {
+            // procura na proxima linha
+            std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
+            if (!std::getline(input_file, line)) {
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+            }
+
+            if (word_is_diretiva(words[j]) || word_is_instruction(words[j]))
+                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+
+            g_public_labels.push_back({words[j], -1});
+        }
+    }
+}
+
+// Define a posicao de memoria para as public labels
+void processa_public_labels() {
+    for (size_t i = 0; i < g_public_labels.size(); i++) {
+        auto simbolo = tabela_simbolos.find(g_public_labels[i].first);
+        if (simbolo == tabela_simbolos.end())
+            throw std::runtime_error("Simbolo " + g_public_labels[i].first + " indefinido.");
+        g_public_labels[i].second = simbolo->second.posicao_mem;
+    }
+}
+
+// Função que define a posicao de memoria para as external labels
+// void processa_external_labels() {
+//     for (size_t i = 0; i < g_external_labels.size(); i++) {
+//         auto simbolo = tabela_simbolos.find(g_external_labels[i]);
+//         if (simbolo == tabela_simbolos.end())
+//             throw std::runtime_error("Simbolo " + g_external_labels[i] + " indefinido.");
+//         g_external_labels[i].second = simbolo->second.posicao_mem;
+//         simbolo->second.is_extern = true;
+//     }
+// }
+
+// Verifica se determinada label esta dentro do array de external labels
+bool find_external_label(const std::string label) {
+    if (std::find(g_external_labels.begin(), g_external_labels.end(), label) != g_external_labels.end())
+        return true;
+    return false;
+    
 }
 
 
@@ -539,11 +697,21 @@ void passagem_zero(const std::string &input_filename, const std::string &output_
 
 void primeira_passagem(const std::string &input_filename) {
     std::ifstream input_file = open_input_file(input_filename);
-    std::string line;
     int contador_posicao = 0;
     int contador_linha = 1;
+    bool in_header = false;
+
+    if (g_is_module){
+        // processa_modulo(input_file, contador_linha, contador_posicao);
+        in_header = true;
+    } 
+
+    std::string line;
     std::string word;
     int start_line_from = -1;
+    
+
+    
 
     while (std::getline(input_file, line)) {
         if (line == "SECTION TEXT" || line == "SECTION DATA") {
@@ -554,9 +722,16 @@ void primeira_passagem(const std::string &input_filename) {
         
         std::vector<std::string> words;
         extract_words_from_line(line, words);
+
+        
         
         int i = 0;
         while (i < words.size()) {
+            if (words[i] == "END") {
+                i++;
+                continue;
+            }
+
             // verifica se alguma palavra foi usada em alguma instrucao anterior
             if (start_line_from != -1) {
                 i = start_line_from;
@@ -571,7 +746,7 @@ void primeira_passagem(const std::string &input_filename) {
                 formatted_label.pop_back(); // remove ':'
                 if (is_simbolo_exists(formatted_label)) 
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + words[i] + " ja foi definido.");
-                tabela_simbolos[formatted_label] = contador_posicao;
+                tabela_simbolos[formatted_label] = { contador_posicao, false };
                 i++;
             }
             else if (word_is_instruction(words[i])) {
@@ -580,13 +755,18 @@ void primeira_passagem(const std::string &input_filename) {
                 extrair_operandos(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 contador_posicao += tam_instrucao;
                 i += tam_instrucao;
+                in_header = false;
             }
             else if (word_is_diretiva(words[i])) {
                 auto simbolo = tabela_diretivas.find(words[i]);
                 if (simbolo == tabela_diretivas.end()) {
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
                 }
-                int tam_diretiva = 2;
+
+                if (in_header && word_is_diretiva_header(words[i]))
+                    processa_diretiva_header(input_file, words, i, contador_linha, start_line_from);
+
+                int tam_diretiva = get_diretiva_size(words[i]);
                 auto has_args = diretiva_has_args(words, i, input_file);
 
                 if (simbolo->first == "SPACE" && has_args.first)
@@ -602,13 +782,17 @@ void primeira_passagem(const std::string &input_filename) {
             else {
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + words[i] + " nao identificada.");
             }
+
+            if (in_header) contador_posicao = 0;
             
         }
+        
         contador_linha++;
         
         
     }
     input_file.close();
+
 }
 
 void segunda_passagem(const std::string &input_filename, const std::string &output_filename) {
@@ -619,6 +803,13 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
     int contador_linha = 1;
     std::string word;
     int start_line_from = -1;
+    bool in_header = false;
+
+    if (g_is_module){
+        // processa_modulo(input_file, contador_linha, contador_posicao);
+        in_header = true;
+    } 
+
     
 
     while (std::getline(input_file, line)) {
@@ -637,7 +828,11 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
 
         int i = 0;
         while (i < words.size()) {
-            std::string x = words[i];
+            if (words[i] == "END") {
+                i++;
+                continue;
+            }
+
             // verifica se alguma palavra foi usada em alguma instrucao anterior
             if (start_line_from != -1) {
                 i = start_line_from;
@@ -646,6 +841,8 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
             start_line_from = -1;
             if (i >= words.size()) break;
 
+            
+
             if (word_is_label(words[i])) {
                 if (!is_lexical_valid(words[i]))
                     throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Erro lexico " + word);
@@ -653,6 +850,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 continue;
             }
             else if (word_is_instruction(words[i])) {
+                in_header = false;
                 std::vector<std::string> operandos;
 
                 // verifica a quantidade de operandos de acordo com tam_instrucao
@@ -661,6 +859,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 
                 opcode = get_instruction_opcode(words[i]);
                 g_ojb_output.append(std::to_string(opcode) + " ");
+                if (g_is_module) g_relative_table.push_back(0); // instrucao eh absutlo
 
                 operandos = extrair_operandos(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 // valida os operandos
@@ -669,25 +868,42 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                         throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[j]);
                     if (!is_simbolo_exists(operandos[j])) 
                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
+                    
+
+                    // builda tabela de uso
+                    if (g_is_module && find_external_label(operandos[j])) {
+                        tabela_uso[operandos[j]].push_back(contador_posicao + 1 + j);
+                    }
+
+                    if (g_is_module) g_relative_table.push_back(1);
+
 
                     operando_posicao_mem = get_simbol_mem_posicao(operandos[j]);
                     g_ojb_output.append(std::to_string(operando_posicao_mem) + " ");
                 }
+
+                
+
+                contador_posicao += tam_instrucao;
                 i += tam_instrucao;
             }
             else if (word_is_diretiva(words[i])) {
                 int tam_diretiva = processa_diretiva(input_file, words, i, contador_linha, start_line_from);
+                if (g_is_module && !in_header) g_relative_table.push_back(0);
+                contador_posicao++;
                 i += tam_diretiva;
             }
-            
             else {
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + words[i] + " nao identificada.");
             }
-
+            if (in_header) contador_posicao = 0;
         }
         contador_linha++;
     }
     input_file.close();
+    if (g_is_module) {
+        processa_public_labels();
+    }
     obj_to_outputfile(output_filename);
 }
 
@@ -715,6 +931,7 @@ int main(int argc, char *argv[]) {
         }
         else {
             std::string output_filename = filename + ".obj";  // Nome do arquivo de saída
+            define_is_module(input_filename);
             primeira_passagem(input_filename);
             segunda_passagem(input_filename, output_filename);
             // std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
