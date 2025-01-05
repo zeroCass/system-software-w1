@@ -572,7 +572,8 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
 
             if (!string_is_number(words[j]))
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            aloca_space(words[j]);
+            // memoria tem que pular a qtd de arg alocado -> -1 pois o primeiro end faz parte da alocacao
+            contador_posicao += aloca_space(words[j]) - 1; 
             tam_diretiva = 2;
         }
         else {
