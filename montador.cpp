@@ -171,6 +171,31 @@ bool string_is_number(const std::string& s) {
     return true;
 }
 
+// Verifica se uma string eh um hexadecimal valido comecando sempre com 0x ou 0X
+bool string_is_hexnumber(const std::string& s) {
+    if (s.size() <= 2 || s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) {
+        return false;
+    }
+
+    for (size_t i = 2; i < s.size(); i++) {
+        if (!std::isxdigit(s[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+// Recebe uma string e se for hexadecimal transoforma o 'x' lowercase
+std::string format_hexnumber(const std::string& s) {
+    if (!string_is_hexnumber(s))
+        return s;
+    std::string aux = s;
+    aux[1] = 'x';
+    return aux;
+}
+
+
 int get_instruction_size(const std::string &word) {
     auto instrucao = tabela_operacoes.find(word);
     if (instrucao != tabela_operacoes.end()) {
@@ -472,7 +497,7 @@ int aloca_space(const std::string &s_number) {
 std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx, std::ifstream &input_file) {
     int j = idx + 1;
     if (j < words.size()) {
-        return {string_is_number(words[j]), false};
+        return {string_is_number(words[j]) || string_is_hexnumber(words[j]), false};
     }
 
 
@@ -481,7 +506,7 @@ std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx
     if (std::getline(input_file, line)) {
         input_file.clear();
         input_file.seekg(current_position); // reseta pointer
-        return {string_is_number(extract_first_string(line)), true};
+        return {string_is_number(extract_first_string(line)) || string_is_hexnumber(extract_first_string(line)), true};
     }
 
     input_file.clear();
@@ -545,9 +570,9 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
         int j = idx_atual + 1;
         // mesma linbha
         if (j < words.size()) {
-            if (!string_is_number(words[j]))
+            if (!string_is_number(words[j]) && !string_is_hexnumber(words[j]))
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            g_ojb_output.append(words[j] + " ");
+            g_ojb_output.append(format_hexnumber(words[j]) + " ");
         } else {
             // procura na proxima linha
             std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
@@ -555,10 +580,10 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
 
             next_word = extract_first_string(line);
-            if(!string_is_number(next_word))
+            if(!string_is_number(next_word) && !string_is_hexnumber(words[j]))
                 throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
             
-            g_ojb_output.append(next_word + " ");
+            g_ojb_output.append(format_hexnumber(next_word) + " ");
             input_file.clear(); // Clear the EOF flag if needed
             input_file.seekg(posicao_linha_atual);
             start_line_from = 1;
