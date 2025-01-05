@@ -329,8 +329,8 @@ void define_is_module(const std::string &input_filename) {
     bool has_begin = false;
     bool has_end = false;
     while (std::getline(input_file, line)) {
-        if (line.find("BEGIN")) has_begin = true;
-        if (line.find("END")) has_end = true;
+        if (line.find("BEGIN") != std::string::npos) has_begin = true;
+        if (line.find("END") != std::string::npos) has_end = true;
     }
     input_file.close();
 
@@ -459,10 +459,12 @@ std::string preprocessar_linha(const std::string &line) {
 }
 
 // Recebe a diretiva SPACE validada e o arquivo de output para alocar o spaco
-void aloca_space(const std::string &s_number) {
+// Retorna a qtd de espaco alocado
+int aloca_space(const std::string &s_number) {
     int number = std::stoi(s_number);
         for (int k = 0; k < number; k++)
             g_ojb_output.append("0 ");
+    return number;
 }
 
 // Funcao que verifica se a diretiva possui argumentos
@@ -534,7 +536,7 @@ std::vector<std::string> extrair_operandos(std::ifstream& input_file, std::vecto
 
 // Função que processa a diretiva 
 // Retorna Erro ou tamanho da diretiva
-int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words, int idx_atual, int contador_linha, int& start_line_from) {
+int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words, int idx_atual, int contador_linha, int& start_line_from, int &contador_posicao) {
     int tam_diretiva = get_diretiva_size(words[idx_atual]);
     std::string next_word;
     std::string line;
@@ -589,7 +591,8 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
                     g_ojb_output.append("0 ");
                 }
                 else if (string_is_number(next_word)) {
-                    aloca_space(next_word);
+                    // memoria tem que pular a qtd de arg alocado -> -1 pois o primeiro end faz parte da alocacao
+                    contador_posicao += aloca_space(next_word) - 1; 
                     start_line_from = 1;
                     tam_diretiva = 2;
                 }
@@ -770,8 +773,12 @@ void primeira_passagem(const std::string &input_filename) {
                 int tam_diretiva = get_diretiva_size(words[i]);
                 auto has_args = diretiva_has_args(words, i, input_file);
 
-                if (simbolo->first == "SPACE" && has_args.first)
-                    tam_diretiva = 1;
+                // memoria tem que pular a qtd de arg alocado -> -1 pois o primeiro end faz parte da alocacao
+                if (simbolo->first == "SPACE" && has_args.first) {
+                    contador_posicao = stoi(words[i + 1]) - 1;  
+                    tam_diretiva = 2;
+                }
+                    
                 
                 // arg esta na proxima linha
                 if (has_args.first && has_args.second)
@@ -889,8 +896,23 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 i += tam_instrucao;
             }
             else if (word_is_diretiva(words[i])) {
-                int tam_diretiva = processa_diretiva(input_file, words, i, contador_linha, start_line_from);
-                if (g_is_module && !in_header) g_relative_table.push_back(0);
+                int tam_diretiva = processa_diretiva(input_file, words, i, contador_linha, start_line_from, contador_posicao);
+                // popula tabela de relativos
+                if (g_is_module && !in_header) {
+                    auto simbolo = tabela_diretivas.find(words[i]);
+                    auto has_args = diretiva_has_args(words, i, input_file);
+                    int num_spaces_to_alloc = 1;
+
+                    // memoria tem que pular a qtd de arg alocado -> -1 pois o primeiro end faz parte da alocacao
+                    if (simbolo->first == "SPACE" && has_args.first) {
+                        contador_posicao = stoi(words[i + 1]) - 1;  
+                        tam_diretiva = 2;
+                        num_spaces_to_alloc = stoi(words[i + 1]);
+                    }
+
+                    for (int i  = 0; i < num_spaces_to_alloc; i++)
+                        g_relative_table.push_back(0);
+                }
                 contador_posicao++;
                 i += tam_diretiva;
             }
