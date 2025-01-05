@@ -290,9 +290,9 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
             in_section_data = true;
             has_section_data = true;
             in_section_text = false;
-        } else if (line.find("BEGIN")) {
+        } else if (line.find("BEGIN") != std::string::npos) {
             has_begin = true;
-        }else if (line.find("END")) {
+        }else if (line.find("END") != std::string::npos) {
             has_end = true;
         } else {
             if (in_section_text)
