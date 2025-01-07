@@ -174,11 +174,15 @@ bool string_is_number(const std::string& s) {
 
 // Verifica se uma string eh um hexadecimal valido comecando sempre com 0x ou 0X
 bool string_is_hexnumber(const std::string& s) {
-    if (s.size() <= 2 || s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) {
+    size_t begin = 0;
+    if (s[0] == '-') begin++; // numero negativo
+
+    if (s.size() <= 2 || s[begin] != '0' || (s[begin + 1] != 'x' && s[begin + 1] != 'X')) {
         return false;
     }
+    size_t i = begin + 2;
 
-    for (size_t i = 2; i < s.size(); i++) {
+    for (; i < s.size(); i++) {
         if (!std::isxdigit(s[i])) {
             return false;
         }
@@ -192,7 +196,9 @@ std::string format_hexnumber(const std::string& s) {
     if (!string_is_hexnumber(s))
         return s;
     std::string aux = s;
-    aux[1] = 'x';
+    size_t pos_x = 1;
+    if (aux[0] == '-') pos_x++; //num negativo
+    aux[pos_x] = 'x';
     return aux;
 }
 
