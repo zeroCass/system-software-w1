@@ -35,8 +35,6 @@ const std::unordered_map<std::string, Instrucao_Info> tabela_operacoes = {
 };
 
 // definir a tabela de diretivas (opcode_diretiva, tam_diretiva)
-
-
 struct Diretiva_Info {
     int tam_diretiva;
     bool in_header;
@@ -59,7 +57,6 @@ struct Simbolo_Info {
 };
 
 std::unordered_map<std::string, Simbolo_Info> tabela_simbolos;
-
 std::unordered_map<std::string, std::vector<int>> tabela_uso;
 std::vector<std::string> tabela_uso_insertion_order; // gambiarra para printar a tabela de uso na ordem de utilizacao do codigo
 // a gambiarra evitar de usar o vetorr, resultando em o(n) para verificar se uma label ja foi inserida
@@ -69,6 +66,24 @@ int g_is_module = false;
 std::vector<std::pair<std::string, int>> g_public_labels;
 std::vector<std::string> g_external_labels;
 std::vector<int>g_relative_table;
+
+
+// Definicao de variavies para MACROS
+struct MNTEntry {
+    std::string macro_name;
+    int num_param;
+    int mdt_index; // poiscao de onde o corpo da macro esta armazenado na MDT
+};
+
+struct MDTEntry {
+    int line_number;
+    std::string instrucao;
+};
+
+// Global tables and index
+std::vector<MNTEntry> g_MNT; 
+std::vector<MDTEntry> g_MDT; 
+int g_current_MDT_index = 0;   // Tracks o index atual da MDT
 
 
 // Helpers Functions
@@ -160,7 +175,6 @@ bool word_is_diretiva_header(const std::string &word) {
     return false;
 }
 
-
 // Funcao que verifica se uma string eh um numero valido
 bool string_is_number(const std::string& s) {
     if (s.empty()) return false;
@@ -190,7 +204,6 @@ bool string_is_hexnumber(const std::string& s) {
     return true;
 }
 
-
 // Recebe uma string e se for hexadecimal transoforma o 'x' lowercase
 std::string format_hexnumber(const std::string& s) {
     if (!string_is_hexnumber(s))
@@ -201,7 +214,6 @@ std::string format_hexnumber(const std::string& s) {
     aux[pos_x] = 'x';
     return aux;
 }
-
 
 int get_instruction_size(const std::string &word) {
     auto instrucao = tabela_operacoes.find(word);
@@ -240,7 +252,6 @@ bool is_simbolo_extern(const std::string &word) {
     }
     return false;
 }
-
 
 int get_simbol_mem_posicao(const std::string &word) {
     auto simbolo = tabela_simbolos.find(word);
@@ -294,6 +305,44 @@ void obj_to_outputfile(const std::string& output_filename) {
     output_file.close();
 }
 
+// Função que define se o arquivo informado eh um modulo 
+void define_is_module(const std::string &input_filename) {
+    std::ifstream input_file = open_input_file(input_filename);
+    std::string line;
+    bool has_begin = false;
+    bool has_end = false;
+    while (std::getline(input_file, line)) {
+        if (line.find("BEGIN") != std::string::npos) has_begin = true;
+        if (line.find("END") != std::string::npos) has_end = true;
+    }
+    input_file.close();
+
+    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if (has_begin && has_end) g_is_module = true; // define que eh modulo
+
+    
+}
+
+// Recebe a diretiva SPACE validada e o arquivo de output para alocar o spaco
+// Retorna a qtd de espaco alocado
+int aloca_space(const std::string &s_number) {
+    int number = std::stoi(s_number);
+        for (int k = 0; k < number; k++)
+            g_ojb_output.append("0 ");
+    return number;
+}
+
+// Verifica se determinada label esta dentro do array de external labels
+bool find_external_label(const std::string label) {
+    if (std::find(g_external_labels.begin(), g_external_labels.end(), label) != g_external_labels.end())
+        return true;
+    return false;
+    
+}
+
+
+
+
 // Others Functions
 
 // Ordena as sessoes do codigo de tal forma que a SECTION TEXT seja sempre a primeira e SECTION DATA a ultima
@@ -330,7 +379,7 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
             in_section_text = false;
         } else if (line.find("BEGIN") != std::string::npos) {
             has_begin = true;
-        }else if (line.find("END") != std::string::npos) {
+        }else if (std::regex_match(line, std::regex(R"(^\s*END\s*$)"))) {
             has_end = true;
         } else {
             if (in_section_text)
@@ -359,23 +408,6 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     }
     output_file.close();
 
-}
-
-void define_is_module(const std::string &input_filename) {
-    std::ifstream input_file = open_input_file(input_filename);
-    std::string line;
-    bool has_begin = false;
-    bool has_end = false;
-    while (std::getline(input_file, line)) {
-        if (line.find("BEGIN") != std::string::npos) has_begin = true;
-        if (line.find("END") != std::string::npos) has_end = true;
-    }
-    input_file.close();
-
-    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
-    if (has_begin && has_end) g_is_module = true; // define que eh modulo
-
-    
 }
 
 // Função que remove comentários em qualquer lugar do código, incluindo no meio da linha (entre operações)
@@ -496,14 +528,6 @@ std::string preprocessar_linha(const std::string &line) {
     return new_line;
 }
 
-// Recebe a diretiva SPACE validada e o arquivo de output para alocar o spaco
-// Retorna a qtd de espaco alocado
-int aloca_space(const std::string &s_number) {
-    int number = std::stoi(s_number);
-        for (int k = 0; k < number; k++)
-            g_ojb_output.append("0 ");
-    return number;
-}
 
 // Funcao que verifica se a diretiva possui argumentos
 // retorna { has_arg: boolean, in_next_line: boolean }
@@ -691,25 +715,7 @@ void processa_public_labels() {
     }
 }
 
-// Função que define a posicao de memoria para as external labels
-// void processa_external_labels() {
-//     for (size_t i = 0; i < g_external_labels.size(); i++) {
-//         auto simbolo = tabela_simbolos.find(g_external_labels[i]);
-//         if (simbolo == tabela_simbolos.end())
-//             throw std::runtime_error("Simbolo " + g_external_labels[i] + " indefinido.");
-//         g_external_labels[i].second = simbolo->second.posicao_mem;
-//         simbolo->second.is_extern = true;
-//     }
-// }
-
-// Verifica se determinada label esta dentro do array de external labels
-bool find_external_label(const std::string label) {
-    if (std::find(g_external_labels.begin(), g_external_labels.end(), label) != g_external_labels.end())
-        return true;
-    return false;
-    
-}
-
+// Adiciona uma label externa para a tabela de uso e insere na insertion_order se preciso
 void add_to_tabela_uso(const std::string& label, int position) {
     if (tabela_uso.find(label) == tabela_uso.end()) {
         tabela_uso_insertion_order.push_back(label);
@@ -718,7 +724,164 @@ void add_to_tabela_uso(const std::string& label, int position) {
 }
 
 
+
+
+
+
+void add_macro(const std::string& name, int num_params, const std::vector<std::string>& body) {
+    MNTEntry mntEntry;
+    mntEntry.macro_name = name;
+    mntEntry.num_param = num_params;
+    mntEntry.mdt_index = g_current_MDT_index;
+    g_MNT.push_back(mntEntry);
+
+    // Add macro body to MDT
+    for (const auto& line : body) {
+        MDTEntry mdtEntry;
+        mdtEntry.line_number = g_current_MDT_index;
+        mdtEntry.instrucao = line;
+        g_MDT.push_back(mdtEntry);
+        g_current_MDT_index++;
+    }
+
+    // Add ENDMACRO to indicate the end of the macro
+    MDTEntry endEntry;
+    endEntry.line_number = g_current_MDT_index;;
+    endEntry.instrucao = "ENDMACRO";
+    g_MDT.push_back(endEntry);
+    g_current_MDT_index++;
+}
+
+
+
+
 // Principais Funcoes
+void expansao_macros(const std::string &input_filename) {
+    std::ifstream input_file = open_input_file(input_filename);
+    
+    std::string line;
+    std::vector<std::string> output_lines;
+    std::regex macro_regex(R"(((\w+):\sMACRO(\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?))");
+
+    bool in_macro_definition = false;
+    std::string current_macro_name;
+    int num_params = 0;
+    std::vector<std::string> macro_body;
+    std::vector<std::string> params;
+
+
+    std::vector<std::string> file_lines;
+    while (std::getline(input_file, line)) {
+        file_lines.push_back(line);
+    }
+    input_file.close();
+
+    for (size_t i = 0; i < file_lines.size(); ++i) {
+        const std::string current_line = file_lines[i];
+        std::smatch match;
+        if (std::regex_match(current_line, match, macro_regex)) {
+            if (in_macro_definition) {
+                throw std::runtime_error("definicao de MACRO aninhada nao permitido.");
+            }
+
+            current_macro_name = match[2].str();
+            num_params = 0;
+            
+
+            for (size_t j = 4; j < match.size(); ++j) {
+                if (!match[j].str().empty()) {
+                    params.push_back(match[j].str());
+                    num_params++;
+                }
+            }
+
+            if (num_params > 4) {
+                throw std::runtime_error("MACRO nao pode ter mais que 4 params.");
+            }
+
+            in_macro_definition = true;
+            macro_body.clear();
+            continue;
+        }
+
+        if (in_macro_definition) {
+            if (current_line == "ENDMACRO") {
+                // Replace arguments in the macro body with #i format
+                for (auto& body_line : macro_body) {
+                    for (size_t j = 0; j < num_params; ++j) {
+                        std::regex argRegex("\\b" + params[j] + "\\b");
+                        body_line = std::regex_replace(body_line, argRegex, "#" + std::to_string(j + 1));
+                    }
+                }
+                add_macro(current_macro_name, num_params, macro_body);
+                in_macro_definition = false;
+            } else {
+                macro_body.push_back(current_line);
+            }
+        }
+    }
+
+    // final do arquivo e nao achou fim da macro
+    if (in_macro_definition)
+        throw std::runtime_error("ENDMACRO nao achado");
+
+    
+    for (size_t i = 0; i < file_lines.size(); ++i) {
+        std::string current_line = file_lines[i];
+
+        // GAMBIRRA para skippar as definicoes de macro
+        // talvez o ideal seja procurar por alguma palavra que seja INSRTUCAO e fazer com que o i desse lop seja o idx da linha dessa
+        std::smatch match;
+        if (std::regex_match(current_line, match, macro_regex))
+            continue;
+
+        for (const auto& mnt_entry : g_MNT) {
+            std::regex call_regex(mnt_entry.macro_name + R"((\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?)");
+
+            std::smatch call_match;
+            if (std::regex_search(file_lines[i], call_match, call_regex)) {
+                int num_args = 0;
+                std::vector<std::string> args;
+
+                for (size_t j = 2; j < call_match.size(); ++j) {
+                    if (!call_match[j].str().empty()) {
+                        args.push_back(call_match[j].str());
+                        num_args++;
+                    }
+                }
+
+                if (num_args != mnt_entry.num_param) {
+                    throw std::runtime_error("Numero de Args invalido para MACRO: " + mnt_entry.macro_name);
+                }
+
+                file_lines.erase(file_lines.begin() + i);
+                for (size_t j = mnt_entry.mdt_index; j < g_MDT.size(); ++j) {
+                    if (g_MDT[j].instrucao != "ENDMACRO") {
+                        std::string replaced_line = g_MDT[j].instrucao;
+                        for (size_t k = 0; k < args.size(); ++k) {
+                            std::regex argRegex("#" + std::to_string(k + 1));
+                            replaced_line = std::regex_replace(replaced_line, argRegex, args[k]);
+                        }
+                        file_lines.insert(file_lines.begin() + i, replaced_line);
+                        i++;
+                    }
+                }
+            }
+        }
+    }
+
+    
+    // Write updated file back
+    std::ofstream outputFile(input_filename);
+    if (!outputFile.is_open()) {
+        throw std::runtime_error("Failed to open the output file.");
+    }
+
+    for (const auto& updatedLine : file_lines) {
+        outputFile << updatedLine << "\n";
+    }
+    outputFile.close();
+}
 
 void passagem_zero(const std::string &input_filename, const std::string &output_filename) {
     std::ifstream input_file = open_input_file(input_filename);
@@ -742,6 +905,7 @@ void passagem_zero(const std::string &input_filename, const std::string &output_
         output_file << output_lines[i] << std::endl;
     }
     output_file.close();
+    expansao_macros(input_filename);
 }
 
 void primeira_passagem(const std::string &input_filename) {
