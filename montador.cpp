@@ -329,7 +329,7 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     input_file.close();
     if (!has_section_text) throw std::runtime_error("Não foi possivel localizar SECTION TEXT no arquivo: " + input_filename);
     if (!has_section_data) throw std::runtime_error("Não foi possivel localizar SECTION DATA no arquivo: " + input_filename);
-    if (has_begin && !has_end || !has_begin && has_end) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
     
     std::ofstream output_file(output_filename);
     if (!output_file.is_open()) 
@@ -337,11 +337,11 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
 
 
     output_file << "SECTION TEXT\n";
-    for (int i = 0; i < section_text.size(); i++) {
+    for (size_t i = 0; i < section_text.size(); i++) {
         output_file << section_text[i] << "\n";
     }
     output_file << "SECTION DATA\n";
-    for (int j = 0; j < section_data.size(); j++) {
+    for (size_t j = 0; j < section_data.size(); j++) {
         output_file << section_data[j] << "\n";
     }
     output_file.close();
@@ -359,7 +359,7 @@ void define_is_module(const std::string &input_filename) {
     }
     input_file.close();
 
-    if (has_begin && !has_end || !has_begin && has_end) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
     if (has_begin && has_end) g_is_module = true; // define que eh modulo
 
     
@@ -495,7 +495,7 @@ int aloca_space(const std::string &s_number) {
 // Funcao que verifica se a diretiva possui argumentos
 // retorna { has_arg: boolean, in_next_line: boolean }
 std::pair<bool, bool> diretiva_has_args(std::vector<std::string> &words, int idx, std::ifstream &input_file) {
-    int j = idx + 1;
+    size_t j = idx + 1;
     if (j < words.size()) {
         return {string_is_number(words[j]) || string_is_hexnumber(words[j]), false};
     }
@@ -527,7 +527,7 @@ std::string correct_single_labels(std::ifstream &input_file, const std::string &
 }
 
 // Fucao que extrair operandos da linha ou de outras linhas se necessario
-std::vector<std::string> extrair_operandos(std::ifstream& input_file, std::vector<std::string> words, int qtd_operandos, int idx_atual, int contador_linha, int& start_line_from) {
+std::vector<std::string> extrair_operandos(std::ifstream& input_file, std::vector<std::string> words, size_t qtd_operandos, int idx_atual, int contador_linha, int& start_line_from) {
     std::vector<std::string> operandos;
     // coleta operandos da linha atual
     size_t j = idx_atual + 1;
@@ -567,7 +567,7 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
     std::string line;
 
     if (words[idx_atual] == "CONST") {
-        int j = idx_atual + 1;
+        size_t j = idx_atual + 1;
         // mesma linbha
         if (j < words.size()) {
             if (!string_is_number(words[j]) && !string_is_hexnumber(words[j]))
@@ -591,7 +591,7 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
         }
     }
     else if (words[idx_atual] == "SPACE") {
-        int j = idx_atual + 1;
+        size_t j = idx_atual + 1;
         if (j <  words.size()) {
             // se proxa palavra eh diretiva, entao tamanho default
             if (word_is_label(words[j]))
@@ -645,7 +645,7 @@ void processa_diretiva_header(std::ifstream& input_file, std::vector<std::string
 
     }
     else if (words[idx_atual] == "PUBLIC") {
-        int j = idx_atual + 1;
+        size_t j = idx_atual + 1;
         if (j <  words.size()) {
             // se proxa palavra eh diretiva, entao tamanho default
             if (word_is_diretiva(words[j]) || word_is_instruction(words[j]))
@@ -718,7 +718,7 @@ void passagem_zero(const std::string &input_filename, const std::string &output_
 
     std::ofstream output_file = open_output_file(output_filename);
     
-    for (int i = 0; i < output_lines.size(); i++) {
+    for (size_t i = 0; i < output_lines.size(); i++) {
         output_file << output_lines[i] << std::endl;
     }
     output_file.close();
@@ -754,7 +754,7 @@ void primeira_passagem(const std::string &input_filename) {
 
         
         
-        int i = 0;
+        size_t i = 0;
         while (i < words.size()) {
             if (words[i] == "END") {
                 i++;
@@ -856,10 +856,9 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
 
         int opcode = -1;
         int operando_posicao_mem = -1;
-        bool has_label = false;
         
 
-        int i = 0;
+        size_t i = 0;
         while (i < words.size()) {
             if (words[i] == "END") {
                 i++;
