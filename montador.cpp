@@ -61,7 +61,8 @@ struct Simbolo_Info {
 std::unordered_map<std::string, Simbolo_Info> tabela_simbolos;
 
 std::unordered_map<std::string, std::vector<int>> tabela_uso;
-
+std::vector<std::string> tabela_uso_insertion_order; // gambiarra para printar a tabela de uso na ordem de utilizacao do codigo
+// a gambiarra evitar de usar o vetorr, resultando em o(n) para verificar se uma label ja foi inserida
 
 std::string g_ojb_output; // armazena a output string
 int g_is_module = false;
@@ -260,14 +261,20 @@ void obj_to_outputfile(const std::string& output_filename) {
             output_file << "D, " << g_public_labels[i].first << " " << g_public_labels[i].second << "\n";
             
         }
-        output_file << "U, ";
-        for (const auto& [simbolo_name, array] : tabela_uso) {
-            output_file << simbolo_name << " ";
-            for (const auto& val : array) {
-                output_file << val << " ";
+       
+        // for (const auto& [simbolo_name, array] : tabela_uso) {
+        //     for (const auto& val : array) {
+        //          output_file << "U, " << simbolo_name + " " << val << std::endl;
+        //     }
+        // }
+
+        for (const auto& label : tabela_uso_insertion_order) {
+            for (const auto& val : tabela_uso[label]) {
+                output_file << "U, " << label + " " << val << std::endl;
             }
+            std::cout << "\n";
         }
-        output_file << std::endl;
+
 
         output_file << "R, ";
         for (size_t i = 0; i < g_relative_table.size(); i++) {
@@ -697,6 +704,13 @@ bool find_external_label(const std::string label) {
     
 }
 
+void add_to_tabela_uso(const std::string& label, int position) {
+    if (tabela_uso.find(label) == tabela_uso.end()) {
+        tabela_uso_insertion_order.push_back(label);
+    }
+    tabela_uso[label].push_back(position);
+}
+
 
 // Principais Funcoes
 
@@ -904,7 +918,8 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
 
                     // builda tabela de uso
                     if (g_is_module && find_external_label(operandos[j])) {
-                        tabela_uso[operandos[j]].push_back(contador_posicao + 1 + j);
+                        add_to_tabela_uso(operandos[j], contador_posicao + 1 + j);
+                        // tabela_uso[operandos[j]].push_back(contador_posicao + 1 + j);
                     }
 
                     if (g_is_module) g_relative_table.push_back(1);
