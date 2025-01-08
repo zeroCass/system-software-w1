@@ -26,6 +26,7 @@ TROCA Y,Z, X
 soma
 JMPP MOD_B
 SOMA
+troca x, y,z
 L1: STOP
 SECTION DATA
 VAL: CONST -0xB END
