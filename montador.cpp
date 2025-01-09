@@ -312,8 +312,8 @@ void define_is_module(const std::string &input_filename) {
     bool has_begin = false;
     bool has_end = false;
     while (std::getline(input_file, line)) {
-        if (line.find("BEGIN") != std::string::npos) has_begin = true;
-        if (line.find("END") != std::string::npos) has_end = true;
+        if (std::regex_search(line, std::regex(R"(\bBEGIN\b)"))) has_begin = true;
+        if (std::regex_search(line, std::regex(R"(\bEND\b)"))) has_end = true;
     }
     input_file.close();
 
@@ -377,9 +377,9 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
             in_section_data = true;
             has_section_data = true;
             in_section_text = false;
-        } else if (line.find("BEGIN") != std::string::npos) {
+        } else if (std::regex_search(line, std::regex(R"(\bBEGIN\b)"))) {
             has_begin = true;
-        }else if (std::regex_match(line, std::regex(R"(^\s*END\s*$)"))) {
+        }else if (std::regex_match(line, std::regex(R"(\bEND\b)"))) {
             has_end = true;
         } else {
             if (in_section_text)
@@ -723,11 +723,6 @@ void add_to_tabela_uso(const std::string& label, int position) {
     tabela_uso[label].push_back(position);
 }
 
-
-
-
-
-
 void add_macro(const std::string& name, int num_params, const std::vector<std::string>& body) {
     MNTEntry mntEntry;
     mntEntry.macro_name = name;
@@ -855,7 +850,7 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
             else if (current_line == "ENDMACRO") {
                 // Replace arguments in the macro body with #i format
                 for (auto& body_line : macro_body) {
-                    for (size_t j = 0; j < num_params; ++j) {
+                    for (int j = 0; j < num_params; ++j) {
                         std::string replacement = "#" + std::to_string(j + 1);
                         size_t pos = 0;
                         while ((pos = body_line.find(params[j], pos)) != std::string::npos) {
