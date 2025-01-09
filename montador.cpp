@@ -746,7 +746,7 @@ void add_macro(const std::string& name, int num_params, const std::vector<std::s
 
     // Add ENDMACRO to indicate the end of the macro
     MDTEntry endEntry;
-    endEntry.line_number = g_current_MDT_index;;
+    endEntry.line_number = g_current_MDT_index;;  
     endEntry.instrucao = "ENDMACRO";
     g_MDT.push_back(endEntry);
     g_current_MDT_index++;
@@ -756,6 +756,7 @@ void add_macro(const std::string& name, int num_params, const std::vector<std::s
 
 
 // Principais Funcoes
+
 std::vector<std::string> expandir_macro_call(const std::string &line) {
     std::vector<std::string> macro_body;
     macro_body.clear();
@@ -810,6 +811,7 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
 
             current_macro_name = match[2].str();
             num_params = 0;
+            params.clear();
             
 
             for (size_t j = 4; j < match.size(); ++j) {
@@ -834,12 +836,10 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
             // expandi macros dentro
             std::vector<std::string> macro_call_body = expandir_macro_call(current_line);
             if (macro_call_body.size() > 0) {
-                for (size_t body_line; body_line < macro_call_body.size(); body_line++)
+                for (size_t body_line = 0; body_line < macro_call_body.size(); body_line++)
                     macro_body.push_back(macro_call_body[body_line]);
             }
-                
-
-            if (current_line == "ENDMACRO") {
+            else if (current_line == "ENDMACRO") {
                 // Replace arguments in the macro body with #i format
                 for (auto& body_line : macro_body) {
                     for (size_t j = 0; j < num_params; ++j) {
@@ -866,25 +866,27 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
 
 void expandir_macros(std::vector<std::string> &file_lines, std::regex macro_regex) {
     std::vector<std::string> macro_body;
-
-    for (size_t i = 0; i < file_lines.size(); ++i) {
+    size_t i = 0;
+    while (i < file_lines.size()) {
         std::string current_line = file_lines[i];
         macro_body.clear();
         macro_body = expandir_macro_call(current_line);
         if (macro_body.size() > 0) {
             file_lines.erase(file_lines.begin() + i);
-            i--;
             for (size_t j = 0;j < macro_body.size(); j++) {
                 file_lines.insert(file_lines.begin() + i, macro_body[j]);
                 i++;
             }
-        }    
+        } else {
+            i++;
+        }  
     }
 }
 
 void processar_macros(const std::string &input_filename) {
     std::ifstream input_file = open_input_file(input_filename);    
     std::regex macro_regex(R"(((\w+):\sMACRO(\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?))");
+    // std::regex macro_regex(R"(((\w+):\sMACRO(\s(&?\w+)(?:,(&?\w+))?(?:,(&?\w+))?(?:,(&?\w+))?)?))");
 
     std::vector<std::string> file_lines;
     std::string line;

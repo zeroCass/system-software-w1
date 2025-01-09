@@ -1,0 +1,36 @@
+SECTION TEXT
+
+TROCA: MACRO &A, &B, &C
+COPY &A, &C
+COPY &B, &A
+COPY &C, &B
+endmacro
+
+out: macro val
+output val
+endmacro
+soma: macro 
+load Y
+ADD VAL
+STORE y
+out y
+ENDMACRO
+
+
+MOD_A: BEGIN
+Y: EXTERN
+MOD_B: EXTERN
+PUBLIC VAL
+PUBLIC L1
+INPUT Y
+LOAD VAL
+ADD Y
+STORE Y
+TROCA Y,Z, X
+soma
+JMPP MOD_B
+SOMA
+troca x, y,z
+L1: STOP
+SECTION DATA
+VAL: CONST -0xB END
