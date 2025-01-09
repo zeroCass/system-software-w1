@@ -762,7 +762,7 @@ std::vector<std::string> expandir_macro_call(const std::string &line) {
     macro_body.clear();
 
     for (const auto& mnt_entry : g_MNT) {
-            std::regex call_regex(mnt_entry.macro_name + R"((\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?)");
+            std::regex call_regex(mnt_entry.macro_name + R"((\s(\&?\w+)(?:,(\&?\w+))?(?:,(\&?\w+))?(?:,(\&?\w+))?)?)");
             std::smatch call_match;
             if (std::regex_search(line, call_match, call_regex)) {
                 int num_args = 0;
@@ -800,8 +800,11 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
     int num_params = 0;
     std::vector<std::string> macro_body;
     std::vector<std::string> params;
+    std::regex special_char("[^0-9a-zA-Z_\\s\\,\\:]+");
+    const std::regex with_and_char("^\\&\\w+$");
 
     for (size_t i = 0; i < file_lines.size(); ++i) {
+        // const std::string current_line = std::regex_replace(file_lines[i], special_char, "");
         const std::string current_line = file_lines[i];
         std::smatch match;
         if (std::regex_match(current_line, match, macro_regex)) {
@@ -813,11 +816,21 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
             num_params = 0;
             params.clear();
             
-
+            // Identify and validate argments
             for (size_t j = 4; j < match.size(); ++j) {
-                if (!match[j].str().empty()) {
-                    params.push_back(match[j].str());
-                    num_params++;
+                std::string param = match[j].str();
+                if (!param.empty()) {
+                    
+                    std::smatch param_match;
+                    if (std::regex_match(param, param_match, with_and_char)) {
+                        //std::string param_formatted = param.substr(1);
+                        //params.push_back(param_formatted);
+                        params.push_back(param);
+                        num_params++;
+                    }
+                    else {
+                        throw std::runtime_error("[Syntax-Error]Line[" + current_line + "]Passagem de parametro para Macro invalido. Formato aceito: $x, onde x eh o parametro");
+                    }    
                 }
             }
 
@@ -843,8 +856,12 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
                 // Replace arguments in the macro body with #i format
                 for (auto& body_line : macro_body) {
                     for (size_t j = 0; j < num_params; ++j) {
-                        std::regex argRegex("\\b" + params[j] + "\\b");
-                        body_line = std::regex_replace(body_line, argRegex, "#" + std::to_string(j + 1));
+                        std::string replacement = "#" + std::to_string(j + 1);
+                        size_t pos = 0;
+                        while ((pos = body_line.find(params[j], pos)) != std::string::npos) {
+                            body_line.replace(pos, params[j].length(), replacement);
+                            pos += replacement.length(); 
+                        }
                     }
                 }
                 add_macro(current_macro_name, num_params, macro_body);
@@ -885,8 +902,8 @@ void expandir_macros(std::vector<std::string> &file_lines, std::regex macro_rege
 
 void processar_macros(const std::string &input_filename) {
     std::ifstream input_file = open_input_file(input_filename);    
-    std::regex macro_regex(R"(((\w+):\sMACRO(\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?))");
-    // std::regex macro_regex(R"(((\w+):\sMACRO(\s(&?\w+)(?:,(&?\w+))?(?:,(&?\w+))?(?:,(&?\w+))?)?))");
+    // std::regex macro_regex(R"(((\w+):\sMACRO(\s(\w+)(?:,(\w+))?(?:,(\w+))?(?:,(\w+))?)?))");
+    std::regex macro_regex(R"(((\w+):\sMACRO(\s(\&?\w+)(?:,(\&?\w+))?(?:,(\&?\w+))?(?:,(\&?\w+))?)?))");
 
     std::vector<std::string> file_lines;
     std::string line;

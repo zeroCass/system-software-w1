@@ -1,19 +1,19 @@
 SECTION TEXT
 
-TROCA: MACRO &A, &B, &C
-COPY &A, &C
-COPY &B, &A
-COPY &C, &B
+TROCA: MACRO &Arg1, &B, &C
+COPY &Arg1, &C
+COPY &B, &arg1
+COPY &C,&B
 endmacro
 
-out: macro val
-output val
+out: macro &valor
+output &valor
 endmacro
-soma: macro 
-load Y
-ADD VAL
+soma: macro &valor
+load y
+ADD &valor
 STORE y
-out y
+out &valor
 ENDMACRO
 
 
@@ -27,9 +27,9 @@ LOAD VAL
 ADD Y
 STORE Y
 TROCA Y,Z, X
-soma
+soma y
 JMPP MOD_B
-SOMA
+SOMA val
 troca x, y,z
 L1: STOP
 SECTION DATA
