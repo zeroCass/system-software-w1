@@ -10,6 +10,7 @@
 #include <regex>
 
 
+namespace fs = std::filesystem;
 
 struct Instrucao_Info {
     int opcode_num;
@@ -393,7 +394,7 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     bool has_section_text = false;
     bool has_section_data = false;
     bool has_begin = false;
-    bool has_end = true;
+    bool has_end = false;
 
     // Funcao assume que SECTION TEXT, SECTION DATA, BEGIN e END estarao sozinhos em um linha
 
@@ -1214,24 +1215,31 @@ int main(int argc, char *argv[]) {
             throw std::runtime_error("Uso: ./montador <nome_arquivo.asm> | <nome_arquivo.pre>");
 
         std::string input_filename = argv[1];
-        if (!std::filesystem::exists(input_filename))
+        if (!fs::exists(input_filename))
             throw std::runtime_error("Arquivo nao encontrado: " + input_filename);
 
-        // extrair extensao do arquivo
-        std::string filename = input_filename.substr(0, input_filename.find_last_of("."));
-        std::string extension = input_filename.substr(input_filename.find_last_of(".") + 1);
+        // extrair dir e extensao do arquivo
+        std::string base_filename = input_filename.substr(input_filename.find_last_of("/\\") + 1);
+        std::string filename = base_filename.substr(0, base_filename.find_last_of("."));
+        std::string extension = base_filename.substr(base_filename.find_last_of(".") + 1);
         if (extension != "asm" && extension != "pre")
             throw std::runtime_error("Extensao de arquivo invalida: " + extension);
+
+        // verifica existencia das pastas /pre e /obj
+        std::string pre_dir = "./pre";
+        std::string obj_dir = "./obj";
+        bool pre_exists = fs::exists(pre_dir) && fs::is_directory(pre_dir);
+        bool obj_exists = fs::exists(obj_dir) && fs::is_directory(obj_dir);
         
         // Pre-processamento
         if (extension == "asm") {
-            std::string output_filename = filename + ".pre";  // Nome do arquivo de saída
+            std::string output_filename = (pre_exists ? (pre_dir + "/") : "") + filename + ".pre";  // Nome do arquivo de saída
             reordenar_sections(input_filename, output_filename);
             passagem_zero(output_filename, output_filename);
             std::cout << "Pré-processamento concluído. Código processado gerado em " << output_filename << std::endl;
         }
         else {
-            std::string output_filename = filename + ".obj";  // Nome do arquivo de saída
+            std::string output_filename = (obj_exists ? (obj_dir + "/") : "") + filename + ".obj";  // Nome do arquivo de saída
             define_is_module(input_filename);
             primeira_passagem(input_filename);
             segunda_passagem(input_filename, output_filename);
