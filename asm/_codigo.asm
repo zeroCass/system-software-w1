@@ -1,22 +1,17 @@
-;explicacao do programa qualquer
-;estou assumento que nao pode haver comentarios na declaracao de
-;SECTION DATA e SECTION TEXT
+;programa: verificar eliminacao de comentarios e espacos desnecessarios
+
 SECTION DATA
-DOIS: CONST 2
-OLD_DATA: SPACE ;declaracao de variavel
-NEW_DATA: SPACE
-TMP_DATA: SPACE
-
 SECTION TEXT
-L1:
-INPUT   OLD_DATA ;
+load N1;comentario extenso para caramba
+;outro comentário STORE     VAR   ;comentario random
+;COMENTARIO INCRIVEL E extenso
+INPUt   n2 ;comentario extenso para caramba
+;outro comentário OUTPUT VAR
+;comentario1 COPY N1, N2
 
 
-LOAD   OLD_DATA    ;comentário L1: DIV
-;comentario qualquer
-DIV DOIS ;ACC = OLD_DATA / 2
-L2:
+;comentario muito grande mesmo COPY VAR, N1 ;comentario
 
-
-
-STOP
+COPY VAR,   N1 ;comentario muito grande mesmo
+EXIT: 
+OUTPUT N1

@@ -1,5 +1,7 @@
-SECTION TEXT
+;programa que testa utilizacao correta da macro,
+;assim como a chama de macro dentro de macros
 
+SECTION TEXT
 TROCA: MACRO &Arg1, &B, &C
 COPY &Arg1, &C
 COPY &B, &arg1

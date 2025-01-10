@@ -1,3 +1,7 @@
+;prgrama que testa macros: nao eh permitido passar parametros para macros sem
+;sem utilizar a sintaxe correta: &param
+;output esperado: erro de passagem de parametro para macro
+
 SECTION TEXT
 
 TROCA: MACRO A, B, C
