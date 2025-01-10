@@ -87,9 +87,15 @@ int g_current_MDT_index = 0;   // Tracks o index atual da MDT
 
 
 // Helpers Functions
+
+// Funcao para extrair todas as palavras de uma linha
+// separa paralavras unidas por ',' e une palavras separadas por '+'
 void extract_words_from_line(const std::string& line, std::vector<std::string>& words) {
     std::string processed_line = line;
     std::replace(processed_line.begin(), processed_line.end(), ',', ' '); // separa strings que estao unidas por virgula (COPY args)
+    std::regex join_plus_signal(R"(\s*\+\s*)");
+    processed_line = std::regex_replace(processed_line, join_plus_signal, "+"); // aritmetica de ponteiros
+
 
     std::istringstream stream(processed_line);
     std::string word;
@@ -239,8 +245,26 @@ int get_instruction_opcode(const std::string &word) {
     return -1;
 }
 
+// Separa string e o numero de operandos que seguem este formato: Y+20
+// retorna um pair {string, number}. Caso o number = -1, entao nao tem operacao artimetica de ponteiro
+std::pair<std::string, int> extrair_operando_aritimetico(const std::string &word) {
+    std::regex pattern(R"(^([a-zA-Z0-9_]+)\+([0-9]+)$)");
+    std::smatch match;
+
+    if (std::regex_match(word, match, pattern)) {
+        std::string formatted_word = match[1]; // string part
+        int number_part = std::stoi(match[2]); // numeric part
+        return { formatted_word, number_part };
+    }
+
+    return { word, -1 };
+        
+}
+
+// Função que verifica se determinada label(simbolo) existe na tabelad e simbolos
 bool is_simbolo_exists(const std::string &word) {
-    if (tabela_simbolos.find(word) != tabela_simbolos.end())
+    auto [formatted_word, _] = extrair_operando_aritimetico(word);
+    if (tabela_simbolos.find(formatted_word) != tabela_simbolos.end())
         return true;
     return false;
 }
@@ -253,10 +277,17 @@ bool is_simbolo_extern(const std::string &word) {
     return false;
 }
 
+// função que retorna a posicao para uma label(simbolo) presente na tabela de simbolo
+// caso contrario, retorna -1
 int get_simbol_mem_posicao(const std::string &word) {
-    auto simbolo = tabela_simbolos.find(word);
+    auto [operando_label, aritimetica] = extrair_operando_aritimetico(word);
+
+    auto simbolo = tabela_simbolos.find(operando_label);
     if (simbolo != tabela_simbolos.end()) {
-        return simbolo->second.posicao_mem; // retorna posicao de memoria
+        int pos_mem = simbolo->second.posicao_mem;
+        if (aritimetica != -1) 
+            pos_mem += aritimetica; // se existir aritimetica de ponteiro, soma
+        return pos_mem;
     }
     return -1;
 }
@@ -476,7 +507,7 @@ std::string remover_comentarios_simples(std::string &line) {
 // Função que remove espaços desnecessários em uma linha
 std::string remover_espacos(const std::string &line) {
     std::string resultado;
-    bool espaco_anterior = false;
+    bool ant_is_space = false;
     bool ant_is_virgula = true;
 
     for (size_t i = 0; i < line.size(); ++i) {
@@ -492,15 +523,16 @@ std::string remover_espacos(const std::string &line) {
         }
 
         if (isspace(c)) {
-            if (!espaco_anterior && !ant_is_virgula) {
+            if (!ant_is_space && !ant_is_virgula) {
                 resultado += ' '; // Add a single space
-                espaco_anterior = true;
+                ant_is_space = true;
             }
-        } else {
-            resultado += c;
-            espaco_anterior = false;
-            ant_is_virgula = false;
+            continue;
         }
+        // caso base - somente um char qualquer
+        resultado += c;
+        ant_is_space = false;
+        ant_is_virgula = false;
         
     }
 
@@ -1117,14 +1149,15 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 // valida os operandos
                 for (size_t j = 0; j < operandos.size(); j++) {
                     if (word_is_instruction(operandos[j]))
-                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[j]);
+                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[i]);
                     if (!is_simbolo_exists(operandos[j])) 
                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
                     
 
                     // builda tabela de uso
-                    if (g_is_module && find_external_label(operandos[j])) {
-                        add_to_tabela_uso(operandos[j], contador_posicao + 1 + j);
+                    auto [operando_label, _] = extrair_operando_aritimetico(operandos[j]);
+                    if (g_is_module && find_external_label(operando_label)) {
+                        add_to_tabela_uso(operando_label, contador_posicao + 1 + j);
                         // tabela_uso[operandos[j]].push_back(contador_posicao + 1 + j);
                     }
 
@@ -1202,7 +1235,7 @@ int main(int argc, char *argv[]) {
             define_is_module(input_filename);
             primeira_passagem(input_filename);
             segunda_passagem(input_filename, output_filename);
-            // std::cout << "Feature ainda nao implementada para o arquivo: " << output_filename << std::endl;
+            std::cout << "Processamento concluído. Código processado gerado em " << output_filename << std::endl;
         }
         
     } catch (std:: exception &e) {
