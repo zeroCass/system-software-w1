@@ -401,6 +401,9 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
     while (std::getline(input_file, line)) {
         // converte para uppercase sempre
         to_uppercase(line);
+        if (std::regex_search(line, std::regex(R"(\bBEGIN\b)"))) has_begin = true;
+        if (std::regex_search(line, std::regex(R"(\bEND\b)"))) has_end = true;
+
         if (line == "SECTION TEXT") {
             in_section_text = true;
             has_section_text = true;
@@ -409,10 +412,6 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
             in_section_data = true;
             has_section_data = true;
             in_section_text = false;
-        } else if (std::regex_search(line, std::regex(R"(\bBEGIN\b)"))) {
-            has_begin = true;
-        }else if (std::regex_match(line, std::regex(R"(\bEND\b)"))) {
-            has_end = true;
         } else {
             if (in_section_text)
                 section_text.push_back(line);
