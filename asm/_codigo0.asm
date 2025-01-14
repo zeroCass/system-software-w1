@@ -1,4 +1,6 @@
 ;programa: verificar eliminacao de comentarios e espacos desnecessarios
+;alem disso, verifica simbolos indefinidos
+;output esperado para .obj: erro simbolo indefinidos (-1 em espacos de mem)
 
 SECTION DATA
 SECTION TEXT

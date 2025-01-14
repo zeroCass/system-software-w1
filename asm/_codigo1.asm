@@ -1,11 +1,12 @@
 
 ;programa: estou assumindo que nao pode haver comentarios na declaracao de labels, 
 ;operandos e entre operacoes
+;output esperado: nenhum erro
 
 ;explicacao do programa qualquer
 ;SECTION DATA e SECTION TEXT
 SECTION DATA
-DOIS: CONST 2
+DOIS: CONST 0x09FE
 OLD_DATA: SPACE ;declaracao de variavel
 NEW_DATA: SPACE
 TMP_DATA: SPACE

@@ -1,3 +1,4 @@
+;programa que representa o mod_b do arquivo _codigo5.asm
 SECTION TEXT
 MOD_B: BEGIN
 VAL: EXTERN

@@ -1,6 +1,7 @@
 ;prgrama que testa macros: nao eh permitido passar parametros para macros sem
 ;sem utilizar a sintaxe correta: &param
-;output esperado: erro de passagem de parametro para macro
+;output esperado .pre: erro de passagem de parametro para macro
+;output esperado .obj: simbolos indefinidos
 
 SECTION TEXT
 

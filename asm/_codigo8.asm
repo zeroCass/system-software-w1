@@ -1,5 +1,5 @@
 ;programa que testa utilizacao correta da macro,
-;assim como a chama de macro dentro de macros
+;assim como a chamada de macro dentro de macros
 
 SECTION TEXT
 TROCA: MACRO &Arg1, &B, &C
@@ -36,3 +36,5 @@ troca x, y,z
 L1: STOP
 SECTION DATA
 VAL: CONST -0xB END
+X: CONST 10
+Z: CONST 0x09FE

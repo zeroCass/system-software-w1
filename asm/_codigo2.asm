@@ -13,7 +13,7 @@ stop
 ;l2: stop
 SECTION DATA
 DOIS: 
-CONST
+const
 
 2
 OLD_DATA: 

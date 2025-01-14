@@ -1,0 +1,55 @@
+O que o programa deverá ser capaz de fazer:
+
+receber um arquivo de texto
+separar o arquivo em .section_text e .data_section
+
+# pré-processamento:
+armazenar cada comando em um vetor? (ex: input N é um comando)
+verificar se é um comando terminado por espaço, quebra de linha ou tabulação (com execeção da LABEL:)
+desconsiderar todos os espaços, tabulações e enteders desncessarios nessa linha de comando (ex: copy	n1, n3; to: copy n1,n3)
+remover comnetário começando por ; e terminando com espaço, tabulações ou enters
+
+
+# primeira passagem:
+VAR -> contador_posicao, contador_linha
+- ler linha a procura de rotulos e simbolos
+- assumir que os simbolos estão escritos corretamente para poder pular a quantidade de endereços
+(ex: assumir que copy ocupa 3 espaços de endereços e os demais ocupam 2)
+- se eh rotulo:
+	procura na TS
+	- se achou rotulo, erro rotulo ja definido
+	- se não achou, insere o rotulo junto do valor de contador_posicao
+- se eh operacao
+	- contador_posicao += tamanho da instrucao
+- se eh diretiva
+	- executa diretiva
+	- contador_posicao += tamanho da diretiva
+- se nao eh diretiva nem operacao
+	- erro, opercao nao identificado
+
+contador_linha++
+
+
+
+
+# segunda passagem:
+variaveis: contador_posicao, contador_linha
+em quanto nao chegou no fim do arquivo:
+- ler linha instrucoes e simbolos e rotulos
+- se rotulo
+	verifica se tem erro lexico (rotulos nao podem começar com número e unico caracter especial q podem ter eh “_”. )
+	se nao tem erro lexico, ignora rotulo e pula para proxima palavra
+- se palavra eh uma instrucao (procura na tabela de instrucao)
+	verifica se o tamanho da instrucao esta correto (considerar que a instrucao pode estar separada por enter)
+	- se invalido: erro -> numero de operandos invaldida
+	- se valido:
+		- pega o operando e verifica se existe na tabela de simbolos:
+			- nao achou: erro simbolo indefinido
+
+
+
+remover os espaços de Y + 2 -> Y+2
+verificar se o simbolo é valido, se é do formato: ^([a-zA-Z0-9_]+)\+([0-9]+)$
+Regex para verificar se a linha é simbolo ou se é simbolo com aritimerica de pointeiros (Y+2)
+criar funcao para fazer a aritmetica de ponteiro (nao verifica se da segmentation fault ou excede a qtd de esapcos alocados)
+OBS: Nao é aceito operacao de arimetica quebrado por linha, ex: Y\n + 2 ou Y +\n2
