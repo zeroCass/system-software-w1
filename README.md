@@ -7,7 +7,7 @@ O objetivo desse trabalho era fazer um montador para um assembly inventado visto
 ### Como rodar o código:
 Para compilar o código é necessário executar este comando:
 ```bash
-g++ montador.cpp -DTHROW_ERRORS=0 -std=c++17 -o montador
+g++ montador.cpp -std=c++17 -o montador
 ```
 
 Para rodar basta executar o comando:
@@ -17,7 +17,7 @@ Para rodar basta executar o comando:
 
 ### Considerações Importantes a respeito do código e do montador:
 - **Compilação:**
-  - O comando para compilar é `g++ montador.cpp -DTHROW_ERRORS=0 -std=c++17 -o montador`. O argumento `-DTHROW_ERRORS=0` desabilita o modo padrão que finaliza o programa ao identificar um erro. Foi recomendado pelo professor que os erros fossem exibidos no output ao invés de finalizar o programa.
+  - O comando para compilar é `g++ montador.cpp -DTHROW_ERRORS=1 -std=c++17 -o montador`. O argumento `-DTHROW_ERRORS=1` habilita o modo que finaliza o programa ao identificar um erro. Foi recomendado pelo professor que os erros fossem exibidos no output ao invés de finalizar o programa, portanto por default, -DTHROW_ERROS=0.
   - Ao rodar o programa com `-DTHROW_ERRORS=0`, se uma LABEL não for identificada, o programa continuará sua execução, o que pode gerar erros como acesso a dados indefinidos. Por exemplo, se uma LABEL for indefinida, a posição de memória no arquivo `.obj` será possivelmente `-1`.
 
 - **Pré-processamento:**

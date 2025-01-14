@@ -13,7 +13,7 @@
 // THROW_ERRORS enable throwing exceptions if value is 1
 // Desabilitar throw erros compile line: g++ montador.cpp -DTHROW_ERRORS=0 -o montador
 #ifndef THROW_ERRORS
-#define THROW_ERRORS 1 // Default: 1 (throw errors)
+#define THROW_ERRORS 0 // Default: 1 (throw errors)
 #endif
 
 
@@ -124,7 +124,7 @@ void handle_error(const std::string &message) {
 #if THROW_ERRORS
     throw std::runtime_error(message);
 #else
-    std::cerr << message << std::endl;
+    std::cout << message << std::endl;
 #endif
 }
 
