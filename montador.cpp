@@ -10,6 +10,13 @@
 #include <regex>
 
 
+// THROW_ERRORS enable throwing exceptions if value is 1
+// Desabilitar throw erros compile line: g++ montador.cpp -DTHROW_ERRORS=0 -o montador
+#ifndef THROW_ERRORS
+#define THROW_ERRORS 1 // Default: 1 (throw errors)
+#endif
+
+
 namespace fs = std::filesystem;
 
 struct Instrucao_Info {
@@ -113,8 +120,12 @@ std::string extract_first_string(const std::string& line) {
     return first_string;
 }
 
-void throw_error(const std::string &message, int line) {
-    throw std::runtime_error("[linha-" + std::to_string(line) + "]" + message);
+void handle_error(const std::string &message) {
+#if THROW_ERRORS
+    throw std::runtime_error(message);
+#else
+    std::cerr << message << std::endl;
+#endif
 }
 
 std::ifstream open_input_file(const std::string& filename) {
@@ -349,7 +360,7 @@ void define_is_module(const std::string &input_filename) {
     }
     input_file.close();
 
-    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if ((has_begin && !has_end) || (!has_begin && has_end)) handle_error("BEGIN/END faltando: " + input_filename);
     if (has_begin && has_end) g_is_module = true; // define que eh modulo
 
     
@@ -420,9 +431,9 @@ void reordenar_sections(const std::string &input_filename, const std::string &ou
         }
     }
     input_file.close();
-    if (!has_section_text) throw std::runtime_error("Não foi possivel localizar SECTION TEXT no arquivo: " + input_filename);
-    if (!has_section_data) throw std::runtime_error("Não foi possivel localizar SECTION DATA no arquivo: " + input_filename);
-    if ((has_begin && !has_end) || (!has_begin && has_end)) throw std::runtime_error("BEGIN/END faltando: " + input_filename);
+    if (!has_section_text) handle_error("Não foi possivel localizar SECTION TEXT no arquivo: " + input_filename);
+    if (!has_section_data) handle_error("Não foi possivel localizar SECTION DATA no arquivo: " + input_filename);
+    if ((has_begin && !has_end) || (!has_begin && has_end)) handle_error("BEGIN/END faltando: " + input_filename);
     
     std::ofstream output_file(output_filename);
     if (!output_file.is_open()) 
@@ -611,7 +622,7 @@ std::vector<std::string> extrair_operandos(std::ifstream& input_file, std::vecto
         std::string word;
         std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
         if (!std::getline(input_file, line)) {
-            throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "] Número de operandos insuficiente.");
+            handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "] Número de operandos insuficiente.");
         }
 
         std::replace(line.begin(), line.end(), ',', ' '); // Normalize commas to spaces
@@ -640,17 +651,17 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
         // mesma linbha
         if (j < words.size()) {
             if (!string_is_number(words[j]) && !string_is_hexnumber(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+                handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
             g_ojb_output.append(format_hexnumber(words[j]) + " ");
         } else {
             // procura na proxima linha
             std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
             if (!std::getline(input_file, line)) 
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
+                handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
 
             next_word = extract_first_string(line);
             if(!string_is_number(next_word) && !string_is_hexnumber(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+                handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
             
             g_ojb_output.append(format_hexnumber(next_word) + " ");
             input_file.clear(); // Clear the EOF flag if needed
@@ -667,7 +678,7 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
                 return tam_diretiva;
 
             if (!string_is_number(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
+                handle_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
             // memoria tem que pular a qtd de arg alocado -> -1 pois o primeiro end faz parte da alocacao
             contador_posicao += aloca_space(words[j]) - 1; 
             tam_diretiva = 2;
@@ -691,7 +702,7 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
                     tam_diretiva = 2;
                 }
                 else 
-                    throw std::runtime_error("[linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
+                    handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha++) + "]Operacao invalida" + next_word);
                 
             }
             
@@ -718,7 +729,7 @@ void processa_diretiva_header(std::ifstream& input_file, std::vector<std::string
         if (j <  words.size()) {
             // se proxa palavra eh diretiva, entao tamanho default
             if (word_is_diretiva(words[j]) || word_is_instruction(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+                handle_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
 
             g_public_labels.push_back({words[j], -1});
         }
@@ -726,11 +737,11 @@ void processa_diretiva_header(std::ifstream& input_file, std::vector<std::string
             // procura na proxima linha
             std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
             if (!std::getline(input_file, line)) {
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+                handle_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
             }
 
             if (word_is_diretiva(words[j]) || word_is_instruction(words[j]))
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
+                handle_error("[linha-" + std::to_string(contador_linha) + "]Operacao invalida " + words[idx_atual]);
 
             g_public_labels.push_back({words[j], -1});
         }
@@ -742,7 +753,7 @@ void processa_public_labels() {
     for (size_t i = 0; i < g_public_labels.size(); i++) {
         auto simbolo = tabela_simbolos.find(g_public_labels[i].first);
         if (simbolo == tabela_simbolos.end())
-            throw std::runtime_error("Simbolo " + g_public_labels[i].first + " indefinido.");
+            handle_error("[Error]Simbolo " + g_public_labels[i].first + " indefinido.");
         g_public_labels[i].second = simbolo->second.posicao_mem;
     }
 }
@@ -803,7 +814,7 @@ std::vector<std::string> expandir_macro_call(const std::string &line) {
                 }
 
                 if (num_args != mnt_entry.num_param) {
-                    throw std::runtime_error("Numero de Args invalido para MACRO: " + mnt_entry.macro_name);
+                    handle_error("[Syntax-Error]Numero de Args invalido para MACRO: " + mnt_entry.macro_name + "\n[Line]: " + line);
                 }
 
                 for (size_t j = mnt_entry.mdt_index; j < g_MDT.size(); ++j) {
@@ -836,7 +847,7 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
         std::smatch match;
         if (std::regex_match(current_line, match, macro_regex)) {
             if (in_macro_definition) {
-                throw std::runtime_error("definicao de MACRO aninhada nao permitido.");
+                handle_error("[Error]Line[" + current_line + "]Definicao de MACRO aninhanda nao permitida");
             }
 
             current_macro_name = match[2].str();
@@ -856,13 +867,13 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
                         num_params++;
                     }
                     else {
-                        throw std::runtime_error("[Syntax-Error]Line[" + current_line + "]Passagem de parametro para Macro invalido. Formato aceito: $x, onde x eh o parametro");
+                        handle_error("[Syntax-Error]Line[" + current_line + "]Passagem de parametro para Macro invalido. Formato aceito: $x, onde x eh o parametro");
                     }    
                 }
             }
 
             if (num_params > 4) {
-                throw std::runtime_error("MACRO nao pode ter mais que 4 params.");
+                handle_error("MACRO nao pode ter mais que 4 params.");
             }
 
             in_macro_definition = true;
@@ -903,7 +914,7 @@ void idenifty_macros_def(std::vector<std::string> &file_lines, std::regex macro_
 
     // final do arquivo e nao achou fim da macro
     if (in_macro_definition)
-        throw std::runtime_error("ENDMACRO nao achado");
+        handle_error("ENDMACRO nao achado");
 
 
 }
@@ -1025,8 +1036,8 @@ void primeira_passagem(const std::string &input_filename) {
             if (word_is_label(words[i])) {
                 std::string formatted_label = words[i];
                 formatted_label.pop_back(); // remove ':'
-                if (is_simbolo_exists(formatted_label)) 
-                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + words[i] + " ja foi definido.");
+                if (is_simbolo_exists(formatted_label))
+                    handle_error("[Error][linha-" + std::to_string(contador_linha) + "]Simbolo " + words[i] + " ja foi definido."); 
                 tabela_simbolos[formatted_label] = { contador_posicao, false };
                 i++;
             }
@@ -1041,7 +1052,7 @@ void primeira_passagem(const std::string &input_filename) {
             else if (word_is_diretiva(words[i])) {
                 auto simbolo = tabela_diretivas.find(words[i]);
                 if (simbolo == tabela_diretivas.end()) {
-                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
+                    handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Diretiva " + words[i] + " nao identificada.");
                 }
 
                 if (in_header && word_is_diretiva_header(words[i]))
@@ -1065,7 +1076,7 @@ void primeira_passagem(const std::string &input_filename) {
                 contador_posicao++;
             }
             else {
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + words[i] + " nao identificada.");
+                handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Operação " + words[i] + " nao identificada.");
             }
 
             if (in_header) contador_posicao = 0;
@@ -1129,7 +1140,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
 
             if (word_is_label(words[i])) {
                 if (!is_lexical_valid(words[i]))
-                    throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Erro lexico " + word);
+                    handle_error("[Lexical-Error][linha-" + std::to_string(contador_linha) + "] " + word);
                 i++;
                 continue;
             }
@@ -1149,9 +1160,9 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 // valida os operandos
                 for (size_t j = 0; j < operandos.size(); j++) {
                     if (word_is_instruction(operandos[j]))
-                        throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[i]);
+                        handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[i]);
                     if (!is_simbolo_exists(operandos[j])) 
-                       throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
+                       handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
                     
 
                     // builda tabela de uso
@@ -1195,7 +1206,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 i += tam_diretiva;
             }
             else {
-                throw std::runtime_error("[linha-" + std::to_string(contador_linha) + "]Operacação " + words[i] + " nao identificada.");
+                handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Operação " + words[i] + " nao identificada.");
             }
             if (in_header) contador_posicao = 0;
         }
