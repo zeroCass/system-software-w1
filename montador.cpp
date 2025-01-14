@@ -207,8 +207,6 @@ bool string_is_number(const std::string& s) {
 // Verifica se uma string eh um hexadecimal valido comecando sempre com 0x ou 0X
 bool string_is_hexnumber(const std::string& s) {
     size_t begin = 0;
-    if (s[0] == '-') begin++; // numero negativo
-
     if (s.size() <= 2 || s[begin] != '0' || (s[begin + 1] != 'x' && s[begin + 1] != 'X')) {
         return false;
     }
@@ -222,15 +220,14 @@ bool string_is_hexnumber(const std::string& s) {
     return true;
 }
 
-// Recebe uma string e se for hexadecimal transoforma o 'x' lowercase
-std::string format_hexnumber(const std::string& s) {
+// Recebe uma string e se for hexadecimal converte para short (16bits leng)
+// Caso seja hexadecimal negativo, converte para o seu complemento de 2
+std::string convert_hexnumber(const std::string& s) {
     if (!string_is_hexnumber(s))
         return s;
-    std::string aux = s;
-    size_t pos_x = 1;
-    if (aux[0] == '-') pos_x++; //num negativo
-    aux[pos_x] = 'x';
-    return aux;
+    unsigned short hex = stoi(s, 0, 16);
+    short converted = static_cast<short>(hex); // converte para signed - complemento de 2
+    return std::to_string(converted);
 }
 
 int get_instruction_size(const std::string &word) {
@@ -652,7 +649,7 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
         if (j < words.size()) {
             if (!string_is_number(words[j]) && !string_is_hexnumber(words[j]))
                 handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
-            g_ojb_output.append(format_hexnumber(words[j]) + " ");
+            g_ojb_output.append(convert_hexnumber(words[j]) + " ");
         } else {
             // procura na proxima linha
             std::streampos posicao_linha_atual = input_file.tellg(); // salva posicao linha atual
@@ -660,10 +657,10 @@ int processa_diretiva(std::ifstream& input_file, std::vector<std::string>& words
                 handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos insuficiente para " + words[idx_atual]);
 
             next_word = extract_first_string(line);
-            if(!string_is_number(next_word) && !string_is_hexnumber(words[j]))
+            if(!string_is_number(next_word) && !string_is_hexnumber(next_word))
                 handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[idx_atual]);
             
-            g_ojb_output.append(format_hexnumber(next_word) + " ");
+            g_ojb_output.append(convert_hexnumber(next_word) + " ");
             input_file.clear(); // Clear the EOF flag if needed
             input_file.seekg(posicao_linha_atual);
             start_line_from = 1;
@@ -1077,6 +1074,7 @@ void primeira_passagem(const std::string &input_filename) {
             }
             else {
                 handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Operação " + words[i] + " nao identificada.");
+                i++; // caso o programa nao pare de executar, ignora palavra e vai para proxima
             }
 
             if (in_header) contador_posicao = 0;
@@ -1159,8 +1157,8 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
                 operandos = extrair_operandos(input_file, words, qtd_operandos, i, contador_linha, start_line_from);
                 // valida os operandos
                 for (size_t j = 0; j < operandos.size(); j++) {
-                    if (word_is_instruction(operandos[j]))
-                        handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + operandos[i]);
+                    if (word_is_diretiva(operandos[j]) || word_is_label(operandos[j]) || word_is_instruction(operandos[j]))
+                        handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Numero de operandos invalido para " + words[i]);
                     if (!is_simbolo_exists(operandos[j])) 
                        handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Simbolo " + operandos[j] + " indefinido.");
                     
@@ -1207,6 +1205,7 @@ void segunda_passagem(const std::string &input_filename, const std::string &outp
             }
             else {
                 handle_error("[Syntax-Error][linha-" + std::to_string(contador_linha) + "]Operação " + words[i] + " nao identificada.");
+                i++; // caso o programa nao pare de executar, ignora palavra e vai para proxima
             }
             if (in_header) contador_posicao = 0;
         }
