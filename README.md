@@ -62,3 +62,12 @@ Para rodar basta executar o comando:
 - **SPACE e limites de memória:**
   - O programa não verifica **Out-of-Bounds/Segmentation Fault** para operações de soma de ponteiros com `SPACE` (e.g., `VAL: SPACE 3`, `VAL + 3` pode resultar em transposição de memória, ultrapassando os limites permitidos).
 
+- **MACROS**
+    - O montador consegue identificar e expandir MACROS com até 4 argumentos, desde que respeite as seguintes estruturas:
+    - LABEL seguindo por ":" e a diretiva MACRO não sendo case sensitível
+    - Ao final da macro, deve existir a palavra ENDMACRO não sendo case sensitível
+    - O corpo da macro deve estar na linha seguinte APÓS a diretiva MACRO ou após os argumentos da macro
+    - Caso seja passados argumentos para a MACRO, esses arguementos DEVEM ser precedidos pelo caractere "&"
+    - As MACROS aceitam declaração de ATÉ UMA MACRO encadiada (nested)
+    - A expansão de MACROS é feita durante o processo de PRÉ-PROCESSAMENTO PASSAGEM ZERO, vistos em aula, utilizando as tabelas MNT e MDT.
+    - Durante a chama de uma MACRO, não deve ser passado argumentos em outras linhas, utilizar sempre a seguinte estrutura: MACRONAME ARG1, AGR2
